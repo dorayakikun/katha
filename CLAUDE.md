@@ -72,3 +72,31 @@ cargo run -- --count-sessions
 - `Filter`: フィルタモード
 - `Help`: ヘルプ表示
 - `Export`: エクスポートダイアログ
+
+## Development Notes
+
+### TUI 実行時の注意
+
+このアプリケーションは TUI（Terminal User Interface）であるため、**インタラクティブなターミナル（TTY）が必要**です。
+
+Claude Code などの非インタラクティブな環境で `cargo run` を実行すると、以下のエラーが発生します:
+
+```
+Terminal error: Device not configured (os error 6)
+```
+
+**TUI の動作確認は、実際のターミナルで行ってください。**
+
+### デバッグログ
+
+`tracing` クレートを使用したロギングが実装されています。`RUST_LOG` 環境変数でログレベルを制御できます:
+
+```bash
+# デバッグログを有効にして実行
+RUST_LOG=debug cargo run 2>&1
+
+# より詳細なトレースログ
+RUST_LOG=trace cargo run 2>&1
+```
+
+ログは stderr に出力されるため、TUI の表示と干渉しません。

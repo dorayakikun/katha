@@ -88,9 +88,12 @@ impl SessionEntry {
         self.entry_type == "assistant"
     }
 
-    /// 表示テキストを取得
+    /// 表示テキストを取得（全テキストブロックを結合）
     pub fn display_text(&self) -> Option<String> {
-        self.message.as_ref().and_then(|m| m.text_content())
+        self.message
+            .as_ref()
+            .map(|m| m.all_text_content())
+            .filter(|s| !s.is_empty())
     }
 }
 
@@ -209,6 +212,57 @@ mod tests {
             ..Default::default()
         };
         assert!(!meta.is_user());
+    }
+
+    #[test]
+    fn test_display_text_returns_none_for_empty() {
+        use crate::domain::message::{ContentBlock, Message, MessageContent};
+
+        // thinking のみのメッセージ
+        let entry = SessionEntry {
+            entry_type: "assistant".to_string(),
+            message: Some(Message {
+                role: "assistant".to_string(),
+                content: MessageContent::Blocks(vec![ContentBlock::Thinking {
+                    thinking: "...".to_string(),
+                }]),
+                model: None,
+                id: None,
+                stop_reason: None,
+                usage: None,
+            }),
+            ..Default::default()
+        };
+        assert!(entry.display_text().is_none());
+    }
+
+    #[test]
+    fn test_display_text_combines_multiple_blocks() {
+        use crate::domain::message::{ContentBlock, Message, MessageContent};
+
+        let entry = SessionEntry {
+            entry_type: "assistant".to_string(),
+            message: Some(Message {
+                role: "assistant".to_string(),
+                content: MessageContent::Blocks(vec![
+                    ContentBlock::Text {
+                        text: "First".to_string(),
+                    },
+                    ContentBlock::Thinking {
+                        thinking: "...".to_string(),
+                    },
+                    ContentBlock::Text {
+                        text: "Second".to_string(),
+                    },
+                ]),
+                model: None,
+                id: None,
+                stop_reason: None,
+                usage: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(entry.display_text(), Some("First\nSecond".to_string()));
     }
 
     #[test]

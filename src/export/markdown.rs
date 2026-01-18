@@ -46,22 +46,20 @@ impl Exporter for MarkdownExporter {
 
         output.push_str("\n---\n\n");
 
-        // メッセージ
+        // メッセージ（テキストがある場合のみ出力）
         for entry in &session.entries {
             if entry.is_user() {
-                output.push_str("## User\n\n");
                 if let Some(text) = entry.display_text() {
+                    output.push_str("## User\n\n");
                     output.push_str(&text);
-                    output.push_str("\n\n");
+                    output.push_str("\n\n---\n\n");
                 }
-                output.push_str("---\n\n");
             } else if entry.is_assistant() {
-                output.push_str("## Assistant\n\n");
                 if let Some(text) = entry.display_text() {
+                    output.push_str("## Assistant\n\n");
                     output.push_str(&text);
-                    output.push_str("\n\n");
+                    output.push_str("\n\n---\n\n");
                 }
-                output.push_str("---\n\n");
             }
         }
 
@@ -134,5 +132,59 @@ mod tests {
     fn test_markdown_file_extension() {
         let exporter = MarkdownExporter::new();
         assert_eq!(exporter.file_extension(), "md");
+    }
+
+    #[test]
+    fn test_markdown_export_skips_empty_messages() {
+        use crate::domain::message::ContentBlock;
+
+        // thinking のみのメッセージを含むセッション
+        let entries = vec![
+            SessionEntry {
+                entry_type: "user".to_string(),
+                timestamp: Some("2025-01-01T10:00:00Z".to_string()),
+                message: Some(Message {
+                    role: "user".to_string(),
+                    content: MessageContent::Text("Hello!".to_string()),
+                    model: None,
+                    id: None,
+                    stop_reason: None,
+                    usage: None,
+                }),
+                ..Default::default()
+            },
+            SessionEntry {
+                entry_type: "assistant".to_string(),
+                timestamp: Some("2025-01-01T10:01:00Z".to_string()),
+                message: Some(Message {
+                    role: "assistant".to_string(),
+                    content: MessageContent::Blocks(vec![ContentBlock::Thinking {
+                        thinking: "...".to_string(),
+                    }]),
+                    model: None,
+                    id: None,
+                    stop_reason: None,
+                    usage: None,
+                }),
+                ..Default::default()
+            },
+        ];
+
+        let session = Session::from_entries(
+            "test-session".to_string(),
+            "/test/project".to_string(),
+            entries,
+        );
+
+        let exporter = MarkdownExporter::new();
+        let output = exporter.export(&session);
+
+        // User セクションは存在する
+        assert!(output.contains("## User"));
+        assert!(output.contains("Hello!"));
+
+        // thinking のみのアシスタントメッセージは出力されない
+        // "## Assistant" が1回も出現しないことを確認
+        assert!(!output.contains("## Assistant"));
     }
 }

@@ -110,7 +110,12 @@ impl Message {
                 .iter()
                 .filter_map(|b| {
                     if let ContentBlock::Text { text } = b {
-                        Some(Self::clean_text(text))
+                        let cleaned = Self::clean_text(text);
+                        if cleaned.is_empty() {
+                            None // 空文字列は除外
+                        } else {
+                            Some(cleaned)
+                        }
                     } else {
                         None
                     }
@@ -141,21 +146,27 @@ impl Message {
     fn clean_text(s: &str) -> String {
         let mut result = s.to_string();
 
-        // <command-name>...</command-name> を除去
-        while let Some(start) = result.find("<command-name>") {
-            if let Some(end) = result.find("</command-name>") {
-                result = format!("{}{}", &result[..start], &result[end + 15..]);
-            } else {
-                break;
-            }
-        }
+        // 除去するタグのリスト
+        let tags = [
+            "command-name",
+            "command-message",
+            "command-args",
+            "local-command-stdout",
+            "local-command-caveat",
+            "system-reminder",
+        ];
 
-        // <command-message>...</command-message> を除去
-        while let Some(start) = result.find("<command-message>") {
-            if let Some(end) = result.find("</command-message>") {
-                result = format!("{}{}", &result[..start], &result[end + 18..]);
-            } else {
-                break;
+        for tag in tags {
+            let open = format!("<{}>", tag);
+            let close = format!("</{}>", tag);
+            let close_len = close.len();
+
+            while let Some(start) = result.find(&open) {
+                if let Some(end) = result.find(&close) {
+                    result = format!("{}{}", &result[..start], &result[end + close_len..]);
+                } else {
+                    break;
+                }
             }
         }
 
@@ -208,6 +219,24 @@ mod tests {
     }
 
     #[test]
+    fn test_clean_text_removes_all_xml_tags() {
+        let input = "<command-args></command-args>\n<system-reminder>test</system-reminder>";
+        assert_eq!(Message::clean_text(input), "");
+    }
+
+    #[test]
+    fn test_clean_text_removes_local_command_tags() {
+        let input = "Hello<local-command-stdout>output</local-command-stdout>World";
+        assert_eq!(Message::clean_text(input), "HelloWorld");
+    }
+
+    #[test]
+    fn test_clean_text_removes_local_command_caveat() {
+        let input = "Text<local-command-caveat>caveat</local-command-caveat>More";
+        assert_eq!(Message::clean_text(input), "TextMore");
+    }
+
+    #[test]
     fn test_deserialize_text_content() {
         let json = r#"{"role":"user","content":"Hello"}"#;
         let msg: Message = serde_json::from_str(json).unwrap();
@@ -219,5 +248,71 @@ mod tests {
         let json = r#"{"role":"assistant","content":[{"type":"text","text":"Response"}]}"#;
         let msg: Message = serde_json::from_str(json).unwrap();
         assert_eq!(msg.text_content(), Some("Response".to_string()));
+    }
+
+    #[test]
+    fn test_all_text_content_filters_empty_cleaned_blocks() {
+        let msg = Message {
+            role: "assistant".to_string(),
+            content: MessageContent::Blocks(vec![
+                ContentBlock::Text {
+                    text: "<command-name>/test</command-name>".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "Actual response".to_string(),
+                },
+            ]),
+            model: None,
+            id: None,
+            stop_reason: None,
+            usage: None,
+        };
+        // 先頭の改行がないことを確認
+        assert_eq!(msg.all_text_content(), "Actual response");
+    }
+
+    #[test]
+    fn test_all_text_content_filters_middle_empty_blocks() {
+        let msg = Message {
+            role: "assistant".to_string(),
+            content: MessageContent::Blocks(vec![
+                ContentBlock::Text {
+                    text: "First".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "<system-reminder>test</system-reminder>".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "Second".to_string(),
+                },
+            ]),
+            model: None,
+            id: None,
+            stop_reason: None,
+            usage: None,
+        };
+        // 中間に余分な改行がないことを確認
+        assert_eq!(msg.all_text_content(), "First\nSecond");
+    }
+
+    #[test]
+    fn test_all_text_content_all_blocks_cleaned_to_empty() {
+        let msg = Message {
+            role: "assistant".to_string(),
+            content: MessageContent::Blocks(vec![
+                ContentBlock::Text {
+                    text: "<command-name>/test</command-name>".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "<system-reminder>reminder</system-reminder>".to_string(),
+                },
+            ]),
+            model: None,
+            id: None,
+            stop_reason: None,
+            usage: None,
+        };
+        // 全てのブロックが空になる場合は空文字列
+        assert_eq!(msg.all_text_content(), "");
     }
 }

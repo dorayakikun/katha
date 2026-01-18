@@ -52,14 +52,17 @@ struct ExportMessage<'a> {
 
 impl Exporter for JsonExporter {
     fn export(&self, session: &Session) -> String {
+        // 空コンテンツのメッセージを除外
         let messages: Vec<ExportMessage> = session
             .entries
             .iter()
             .filter(|e| e.is_user() || e.is_assistant())
-            .map(|entry| ExportMessage {
-                role: if entry.is_user() { "user" } else { "assistant" },
-                content: entry.display_text(),
-                timestamp: entry.timestamp.as_deref(),
+            .filter_map(|entry| {
+                entry.display_text().map(|content| ExportMessage {
+                    role: if entry.is_user() { "user" } else { "assistant" },
+                    content: Some(content),
+                    timestamp: entry.timestamp.as_deref(),
+                })
             })
             .collect();
 
@@ -156,5 +159,58 @@ mod tests {
 
         // 整形されていないので改行が少ない
         assert!(!output.contains("  "));
+    }
+
+    #[test]
+    fn test_json_export_filters_empty_messages() {
+        use crate::domain::message::ContentBlock;
+
+        // thinking のみのメッセージを含むセッション
+        let entries = vec![
+            SessionEntry {
+                entry_type: "user".to_string(),
+                timestamp: Some("2025-01-01T10:00:00Z".to_string()),
+                message: Some(Message {
+                    role: "user".to_string(),
+                    content: MessageContent::Text("Hello!".to_string()),
+                    model: None,
+                    id: None,
+                    stop_reason: None,
+                    usage: None,
+                }),
+                ..Default::default()
+            },
+            SessionEntry {
+                entry_type: "assistant".to_string(),
+                timestamp: Some("2025-01-01T10:01:00Z".to_string()),
+                message: Some(Message {
+                    role: "assistant".to_string(),
+                    content: MessageContent::Blocks(vec![ContentBlock::Thinking {
+                        thinking: "...".to_string(),
+                    }]),
+                    model: None,
+                    id: None,
+                    stop_reason: None,
+                    usage: None,
+                }),
+                ..Default::default()
+            },
+        ];
+
+        let session = Session::from_entries(
+            "test-session".to_string(),
+            "/test/project".to_string(),
+            entries,
+        );
+
+        let exporter = JsonExporter::new();
+        let output = exporter.export(&session);
+
+        // user メッセージは存在する
+        assert!(output.contains("\"role\": \"user\""));
+        assert!(output.contains("Hello!"));
+
+        // thinking のみのアシスタントメッセージは含まれない
+        assert!(!output.contains("\"role\": \"assistant\""));
     }
 }

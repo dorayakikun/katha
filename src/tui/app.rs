@@ -1,5 +1,7 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use tracing::{debug, trace};
+
 use crate::KathaError;
 use crate::config::ClaudePaths;
 use crate::data::{HistoryReader, SessionReader};
@@ -149,9 +151,16 @@ impl App {
 
     /// メインループ
     pub fn run(&mut self) -> Result<(), KathaError> {
+        debug!(
+            "Entering main loop, should_quit: {}, session_count: {}",
+            self.model.should_quit,
+            self.model.sessions.len()
+        );
+
         loop {
             // 1. まず非同期メッセージを受信（描画前に処理することで即座に画面更新）
             while let Ok(async_msg) = self.async_rx.try_recv() {
+                trace!("Received async message: {:?}", async_msg);
                 update(&mut self.model, async_msg);
             }
 
@@ -196,9 +205,11 @@ impl App {
                 .map_err(|e| KathaError::Terminal(e.to_string()))?;
 
             // 3. イベント処理
+            trace!("Waiting for event...");
             let msg = self
                 .event_handler
                 .poll(view_mode, self.model.export_status.as_ref())?;
+            trace!("Event message: {:?}", msg);
 
             // キー入力があったらエラーメッセージをクリア（セッション一覧画面のみ）
             if !matches!(msg, Message::None)
@@ -254,10 +265,12 @@ impl App {
 
             // 終了判定
             if self.model.should_quit {
+                debug!("should_quit is true, exiting loop");
                 break;
             }
         }
 
+        debug!("Exiting main loop");
         // ターミナル復元
         self.terminal.restore()?;
 
