@@ -1,5 +1,5 @@
 use super::message::Message;
-use super::model::{ExportStatus, Model, ViewMode};
+use super::model::{ExportStatus, Model, TreeNodeKind, ViewMode};
 use crate::search::DateRange;
 
 /// スクロール量
@@ -27,8 +27,23 @@ pub fn update(model: &mut Model, msg: Message) {
             model.update_preview();
         }
         Message::EnterDetail => {
-            // 詳細画面に遷移
-            if model.selected_session().is_some() {
+            // ツリーアイテムが選択されている場合
+            if let Some(item) = model.selected_tree_item() {
+                match item.kind {
+                    TreeNodeKind::Project => {
+                        // プロジェクトノードの場合は展開/折りたたみ
+                        let project_path = item.project_path.clone();
+                        model.toggle_project(&project_path);
+                        model.update_preview();
+                    }
+                    TreeNodeKind::Session => {
+                        // セッションノードの場合は詳細画面に遷移
+                        model.view_mode = ViewMode::SessionDetail;
+                        model.reset_scroll();
+                    }
+                }
+            } else if model.selected_session().is_some() {
+                // 旧方式（互換性のため）
                 model.view_mode = ViewMode::SessionDetail;
                 model.reset_scroll();
             }
@@ -171,6 +186,28 @@ pub fn update(model: &mut Model, msg: Message) {
         }
         Message::ClearError => {
             model.error_message = None;
+        }
+
+        // === ツリー操作関連 ===
+        Message::ToggleProject(project_path) => {
+            model.toggle_project(&project_path);
+            model.update_preview();
+        }
+        Message::ExpandCurrentProject => {
+            model.expand_current_project();
+            model.update_preview();
+        }
+        Message::CollapseCurrentProject => {
+            model.collapse_current_project();
+            model.update_preview();
+        }
+        Message::ExpandAll => {
+            model.expand_all();
+            model.update_preview();
+        }
+        Message::CollapseAll => {
+            model.collapse_all();
+            model.update_preview();
         }
     }
 }

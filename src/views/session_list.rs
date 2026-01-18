@@ -9,7 +9,7 @@ use ratatui::{
 use crate::layout::TwoPane;
 use crate::tea::{Model, ViewMode};
 use crate::views::render_preview_pane;
-use crate::widgets::{SearchBar, SessionTable, SessionTableState, StatusBar};
+use crate::widgets::{ProjectTree, ProjectTreeState, SearchBar, StatusBar};
 
 /// セッション一覧ビューをレンダリング
 pub fn render_session_list(frame: &mut Frame, model: &Model) {
@@ -107,16 +107,18 @@ fn render_search_bar(frame: &mut Frame, area: Rect, model: &Model) {
 
 /// セッション一覧をレンダリング
 fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
-    let filtered_sessions = model.filtered_sessions();
+    let project_count = model.project_groups.len();
+    let session_count = model.total_session_count();
 
     let title = if model.is_filtered || !model.search_query.is_empty() {
+        let filtered_sessions = model.filtered_sessions();
         format!(
             " Sessions ({}/{}) ",
             filtered_sessions.len(),
-            model.sessions.len()
+            session_count
         )
     } else {
-        " Sessions ".to_string()
+        format!(" Projects ({}) / Sessions ({}) ", project_count, session_count)
     };
 
     let block = Block::default()
@@ -124,8 +126,8 @@ fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    if filtered_sessions.is_empty() {
-        let message = if model.sessions.is_empty() {
+    if model.tree_items.is_empty() {
+        let message = if model.project_groups.is_empty() {
             "No sessions found"
         } else {
             "No matching sessions"
@@ -137,14 +139,13 @@ fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
         return;
     }
 
-    // フィルタ済みセッションをクローンしてテーブルに渡す
-    let sessions_for_table: Vec<_> = filtered_sessions.into_iter().cloned().collect();
-    let table = SessionTable::new(&sessions_for_table).block(block);
+    // ProjectTree ウィジェットを使用
+    let tree = ProjectTree::new(&model.tree_items, &model.expanded_projects).block(block);
 
-    let mut state = SessionTableState::new();
+    let mut state = ProjectTreeState::new();
     state.select(model.selected_index);
 
-    frame.render_stateful_widget(table, area, &mut state);
+    frame.render_stateful_widget(tree, area, &mut state);
 }
 
 /// フッターをレンダリング（ステータスバー + キーバインド）
@@ -172,9 +173,9 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
             ],
             _ => {
                 let mut keys = vec![
-                    ("j/↓", "Down"),
-                    ("k/↑", "Up"),
-                    ("Enter", "Select"),
+                    ("j/k", "Move"),
+                    ("Enter", "Open/Toggle"),
+                    ("l/h", "Expand/Fold"),
                     ("/", "Search"),
                     ("f", "Filter"),
                     ("e", "Export"),

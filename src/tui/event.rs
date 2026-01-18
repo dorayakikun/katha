@@ -81,8 +81,16 @@ impl EventHandler {
             KeyCode::Char('k') | KeyCode::Up => Message::MoveUp,
             // 下に移動
             KeyCode::Char('j') | KeyCode::Down => Message::MoveDown,
-            // Enter で詳細画面へ
+            // Enter で詳細画面へ（プロジェクトの場合は展開/折りたたみ）
             KeyCode::Enter => Message::EnterDetail,
+            // l / → で展開
+            KeyCode::Char('l') | KeyCode::Right => Message::ExpandCurrentProject,
+            // h / ← で折りたたみ
+            KeyCode::Char('h') | KeyCode::Left => Message::CollapseCurrentProject,
+            // E ですべて展開
+            KeyCode::Char('E') => Message::ExpandAll,
+            // C ですべて折りたたみ
+            KeyCode::Char('C') => Message::CollapseAll,
             // 検索モード開始
             KeyCode::Char('/') => Message::StartSearch,
             // フィルタモード開始

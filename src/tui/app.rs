@@ -8,7 +8,9 @@ use crate::data::{HistoryReader, SessionReader};
 use crate::export::{
     ExportFormat, Exporter, JsonExporter, MarkdownExporter, generate_filename, write_to_file,
 };
-use crate::tea::{ExportStatus, Message, Model, SessionListItem, ViewMode, update};
+use crate::tea::{
+    ExportStatus, Message, Model, ProjectGroup, SessionListItem, TreeNodeKind, ViewMode, update,
+};
 use crate::tui::{EventHandler, Terminal};
 use crate::views::{render_export_dialog, render_help, render_session_detail, render_session_list};
 
@@ -59,35 +61,48 @@ impl App {
         // プロジェクトごとにグループ化されたエントリを取得
         let projects = HistoryReader::group_by_project(&paths.history_file)?;
 
-        // SessionListItem に変換
-        let mut sessions: Vec<SessionListItem> = Vec::new();
+        // ProjectGroup に変換（全セッションを含む）
+        let mut project_groups: Vec<ProjectGroup> = Vec::new();
 
         for (project, entries) in projects {
-            // 各プロジェクトの最新エントリを使用
-            if let Some(entry) = entries.first() {
-                let project_name = project.rsplit('/').next().unwrap_or(&project).to_string();
+            let project_name = project.rsplit('/').next().unwrap_or(&project).to_string();
 
-                let datetime = entry.datetime();
-                let formatted_time = datetime.format("%Y-%m-%d %H:%M").to_string();
+            // 全エントリを SessionListItem に変換
+            let sessions: Vec<SessionListItem> = entries
+                .iter()
+                .map(|entry| {
+                    let datetime = entry.datetime();
+                    let formatted_time = datetime.format("%Y-%m-%d %H:%M").to_string();
 
-                let display = entry.display.clone();
+                    SessionListItem {
+                        session_id: entry.session_id.clone(),
+                        project_name: project_name.clone(),
+                        project_path: project.clone(),
+                        display: entry.display.clone(),
+                        formatted_time,
+                        datetime,
+                    }
+                })
+                .collect();
 
-                sessions.push(SessionListItem {
-                    session_id: entry.session_id.clone(),
-                    project_name,
+            if !sessions.is_empty() {
+                project_groups.push(ProjectGroup {
                     project_path: project.clone(),
-                    display,
-                    formatted_time,
-                    datetime,
+                    project_name,
+                    sessions,
                 });
             }
         }
 
-        // 時刻でソート（新しい順）
-        sessions.sort_by(|a, b| b.formatted_time.cmp(&a.formatted_time));
+        // 各プロジェクトの最新セッションの時刻でソート（新しい順）
+        project_groups.sort_by(|a, b| {
+            let a_latest = a.sessions.first().map(|s| &s.datetime);
+            let b_latest = b.sessions.first().map(|s| &s.datetime);
+            b_latest.cmp(&a_latest)
+        });
 
         self.paths = Some(paths);
-        self.model = Model::new().with_sessions(sessions);
+        self.model = Model::new().with_project_groups(project_groups);
         update(&mut self.model, Message::Initialized);
 
         Ok(())
@@ -124,7 +139,15 @@ impl App {
     /// 選択中のセッションを読み込み
     fn load_current_session(&self) -> Option<Message> {
         let paths = self.paths.as_ref()?;
-        let selected = self.model.selected_session()?;
+
+        // ツリーアイテムからセッション情報を取得
+        let selected = if let Some(item) = self.model.selected_tree_item() {
+            // Session ノードの場合のみ
+            item.session.as_ref()?
+        } else {
+            // 旧方式（互換性のため）
+            self.model.selected_session()?
+        };
 
         let session_file = SessionReader::session_file_path(
             &paths.projects_dir,
@@ -219,13 +242,22 @@ impl App {
                 update(&mut self.model, Message::ClearError);
             }
 
-            // EnterDetail の場合はセッション読み込みを実行
+            // EnterDetail の場合
             if matches!(msg, Message::EnterDetail) {
+                // Session ノードの場合のみセッションを読み込む
+                let is_session_node = self
+                    .model
+                    .selected_tree_item()
+                    .map(|item| item.kind == TreeNodeKind::Session)
+                    .unwrap_or(false);
+
                 update(&mut self.model, msg);
 
-                // セッション読み込み
-                if let Some(load_msg) = self.load_current_session() {
-                    update(&mut self.model, load_msg);
+                // Session ノードの場合はセッション読み込みを実行
+                if is_session_node {
+                    if let Some(load_msg) = self.load_current_session() {
+                        update(&mut self.model, load_msg);
+                    }
                 }
             } else if matches!(msg, Message::ConfirmExport) {
                 // current_session が存在し、Selecting 状態の場合のみ export を開始

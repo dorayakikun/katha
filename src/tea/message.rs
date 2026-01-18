@@ -91,4 +91,16 @@ pub enum Message {
     ShowError(String),
     /// エラーメッセージをクリア
     ClearError,
+
+    // === ツリー操作関連 ===
+    /// プロジェクトの展開/折りたたみ切り替え
+    ToggleProject(String),
+    /// 選択中のプロジェクトを展開
+    ExpandCurrentProject,
+    /// 選択中のプロジェクトを折りたたみ
+    CollapseCurrentProject,
+    /// すべてのプロジェクトを展開
+    ExpandAll,
+    /// すべてのプロジェクトを折りたたみ
+    CollapseAll,
 }

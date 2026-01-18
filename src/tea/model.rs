@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -5,6 +6,79 @@ use chrono::{DateTime, Utc};
 use crate::domain::Session;
 use crate::export::ExportFormat;
 use crate::search::{FilterCriteria, FilterField, SearchQuery};
+
+/// ツリーノードの種類
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreeNodeKind {
+    /// プロジェクトノード
+    Project,
+    /// セッションノード
+    Session,
+}
+
+/// ツリー表示用のアイテム
+#[derive(Debug, Clone)]
+pub struct TreeItem {
+    /// ノードの種類
+    pub kind: TreeNodeKind,
+    /// プロジェクトパス
+    pub project_path: String,
+    /// プロジェクト名
+    pub project_name: String,
+    /// セッション情報（Session ノードの場合のみ）
+    pub session: Option<SessionListItem>,
+    /// 子ノード数（Project ノードの場合のセッション数）
+    pub child_count: usize,
+    /// 最新の日時
+    pub latest_datetime: DateTime<Utc>,
+    /// フォーマット済み日時
+    pub formatted_time: String,
+}
+
+impl TreeItem {
+    /// プロジェクトノードを作成
+    pub fn project(group: &ProjectGroup) -> Self {
+        let latest = group
+            .sessions
+            .first()
+            .map(|s| (s.datetime, s.formatted_time.clone()))
+            .unwrap_or_else(|| (Utc::now(), String::new()));
+
+        Self {
+            kind: TreeNodeKind::Project,
+            project_path: group.project_path.clone(),
+            project_name: group.project_name.clone(),
+            session: None,
+            child_count: group.sessions.len(),
+            latest_datetime: latest.0,
+            formatted_time: latest.1,
+        }
+    }
+
+    /// セッションノードを作成
+    pub fn session(item: &SessionListItem) -> Self {
+        Self {
+            kind: TreeNodeKind::Session,
+            project_path: item.project_path.clone(),
+            project_name: item.project_name.clone(),
+            session: Some(item.clone()),
+            child_count: 0,
+            latest_datetime: item.datetime,
+            formatted_time: item.formatted_time.clone(),
+        }
+    }
+}
+
+/// プロジェクトグループ
+#[derive(Debug, Clone)]
+pub struct ProjectGroup {
+    /// プロジェクトパス
+    pub project_path: String,
+    /// プロジェクト名
+    pub project_name: String,
+    /// セッション一覧（新しい順にソート済み）
+    pub sessions: Vec<SessionListItem>,
+}
 
 /// エクスポートステータス
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +193,12 @@ pub struct Model {
     pub export_status: Option<ExportStatus>,
     /// エラーメッセージ（セッション一覧画面で表示）
     pub error_message: Option<String>,
+    /// プロジェクトグループ一覧
+    pub project_groups: Vec<ProjectGroup>,
+    /// 展開されているプロジェクトのパス
+    pub expanded_projects: HashSet<String>,
+    /// ツリー表示用アイテム一覧
+    pub tree_items: Vec<TreeItem>,
 }
 
 impl Default for Model {
@@ -149,6 +229,9 @@ impl Model {
             export_format: ExportFormat::default(),
             export_status: None,
             error_message: None,
+            project_groups: Vec::new(),
+            expanded_projects: HashSet::new(),
+            tree_items: Vec::new(),
         }
     }
 
@@ -156,6 +239,121 @@ impl Model {
     pub fn with_sessions(mut self, sessions: Vec<SessionListItem>) -> Self {
         self.sessions = sessions;
         self
+    }
+
+    /// プロジェクトグループを設定
+    pub fn with_project_groups(mut self, groups: Vec<ProjectGroup>) -> Self {
+        self.project_groups = groups;
+        self.rebuild_tree_items();
+        self
+    }
+
+    /// 展開状態に基づいてツリーアイテムを再構築
+    pub fn rebuild_tree_items(&mut self) {
+        self.tree_items.clear();
+
+        for group in &self.project_groups {
+            // プロジェクトノードを追加
+            self.tree_items.push(TreeItem::project(group));
+
+            // 展開されている場合はセッションノードを追加
+            if self.expanded_projects.contains(&group.project_path) {
+                for session in &group.sessions {
+                    self.tree_items.push(TreeItem::session(session));
+                }
+            }
+        }
+
+        // selected_index が範囲外にならないようにする
+        if !self.tree_items.is_empty() && self.selected_index >= self.tree_items.len() {
+            self.selected_index = self.tree_items.len() - 1;
+        }
+    }
+
+    /// 選択中のツリーアイテムを取得
+    pub fn selected_tree_item(&self) -> Option<&TreeItem> {
+        self.tree_items.get(self.selected_index)
+    }
+
+    /// 総セッション数を取得
+    pub fn total_session_count(&self) -> usize {
+        self.project_groups
+            .iter()
+            .map(|g| g.sessions.len())
+            .sum()
+    }
+
+    /// プロジェクトの展開/折りたたみを切り替え
+    pub fn toggle_project(&mut self, project_path: &str) {
+        if self.expanded_projects.contains(project_path) {
+            self.expanded_projects.remove(project_path);
+        } else {
+            self.expanded_projects.insert(project_path.to_string());
+        }
+        self.rebuild_tree_items();
+    }
+
+    /// 選択中のプロジェクトを展開
+    pub fn expand_current_project(&mut self) {
+        if let Some(item) = self.selected_tree_item() {
+            if item.kind == TreeNodeKind::Project
+                && !self.expanded_projects.contains(&item.project_path)
+            {
+                let path = item.project_path.clone();
+                self.expanded_projects.insert(path);
+                self.rebuild_tree_items();
+            }
+        }
+    }
+
+    /// 選択中のプロジェクトを折りたたみ
+    pub fn collapse_current_project(&mut self) {
+        if let Some(item) = self.selected_tree_item() {
+            let project_path = item.project_path.clone();
+            if self.expanded_projects.contains(&project_path) {
+                // セッションノードの場合は親プロジェクトに移動してから折りたたみ
+                if item.kind == TreeNodeKind::Session {
+                    // 親プロジェクトを探す
+                    if let Some(project_index) = self
+                        .tree_items
+                        .iter()
+                        .position(|t| t.kind == TreeNodeKind::Project && t.project_path == project_path)
+                    {
+                        self.selected_index = project_index;
+                    }
+                }
+                self.expanded_projects.remove(&project_path);
+                self.rebuild_tree_items();
+            }
+        }
+    }
+
+    /// すべてのプロジェクトを展開
+    pub fn expand_all(&mut self) {
+        for group in &self.project_groups {
+            self.expanded_projects.insert(group.project_path.clone());
+        }
+        self.rebuild_tree_items();
+    }
+
+    /// すべてのプロジェクトを折りたたみ
+    pub fn collapse_all(&mut self) {
+        self.expanded_projects.clear();
+        // 選択位置を調整（プロジェクトのみになるので）
+        if let Some(item) = self.selected_tree_item() {
+            // 現在選択中のプロジェクトを探す
+            let project_path = item.project_path.clone();
+            self.rebuild_tree_items();
+            // 同じプロジェクトを選択
+            if let Some(idx) = self.tree_items.iter().position(|t| t.project_path == project_path) {
+                self.selected_index = idx;
+            } else {
+                self.selected_index = 0;
+            }
+        } else {
+            self.rebuild_tree_items();
+            self.selected_index = 0;
+        }
     }
 
     /// 上に移動
@@ -169,6 +367,8 @@ impl Model {
     pub fn move_down(&mut self) {
         let max_index = if self.is_filtered {
             self.filtered_indices.len().saturating_sub(1)
+        } else if !self.tree_items.is_empty() {
+            self.tree_items.len().saturating_sub(1)
         } else {
             self.sessions.len().saturating_sub(1)
         };
@@ -263,7 +463,32 @@ impl Model {
 
     /// 選択中のセッションからプレビューを更新
     pub fn update_preview(&mut self) {
-        self.preview_session = self.selected_session().map(SessionPreview::from_list_item);
+        // ツリーアイテムから選択中のセッションを取得
+        if let Some(item) = self.selected_tree_item() {
+            match item.kind {
+                TreeNodeKind::Project => {
+                    // プロジェクトノードの場合は最新セッションのプレビューを表示
+                    if let Some(group) = self
+                        .project_groups
+                        .iter()
+                        .find(|g| g.project_path == item.project_path)
+                    {
+                        self.preview_session =
+                            group.sessions.first().map(SessionPreview::from_list_item);
+                    } else {
+                        self.preview_session = None;
+                    }
+                }
+                TreeNodeKind::Session => {
+                    // セッションノードの場合はそのセッションのプレビューを表示
+                    self.preview_session =
+                        item.session.as_ref().map(SessionPreview::from_list_item);
+                }
+            }
+        } else {
+            // 旧方式（互換性のため）
+            self.preview_session = self.selected_session().map(SessionPreview::from_list_item);
+        }
     }
 }
 
@@ -388,5 +613,230 @@ mod tests {
 
         model.reset_scroll();
         assert_eq!(model.detail_scroll_offset, 0);
+    }
+
+    // TreeNodeKind のテスト
+    #[test]
+    fn test_tree_node_kind_equality() {
+        assert_eq!(TreeNodeKind::Project, TreeNodeKind::Project);
+        assert_eq!(TreeNodeKind::Session, TreeNodeKind::Session);
+        assert_ne!(TreeNodeKind::Project, TreeNodeKind::Session);
+    }
+
+    // ProjectGroup と TreeItem のテスト
+    fn create_project_group(name: &str, session_count: usize) -> ProjectGroup {
+        let sessions: Vec<SessionListItem> = (0..session_count)
+            .map(|i| SessionListItem {
+                session_id: format!("{}-session-{}", name, i),
+                project_name: name.to_string(),
+                project_path: format!("/path/to/{}", name),
+                display: format!("Message {} for {}", i, name),
+                formatted_time: format!("2025-01-0{} 00:00", i + 1),
+                datetime: Utc::now(),
+            })
+            .collect();
+
+        ProjectGroup {
+            project_path: format!("/path/to/{}", name),
+            project_name: name.to_string(),
+            sessions,
+        }
+    }
+
+    #[test]
+    fn test_project_group_creation() {
+        let group = create_project_group("test-project", 3);
+        assert_eq!(group.project_name, "test-project");
+        assert_eq!(group.project_path, "/path/to/test-project");
+        assert_eq!(group.sessions.len(), 3);
+    }
+
+    #[test]
+    fn test_tree_item_project() {
+        let group = create_project_group("my-project", 5);
+        let tree_item = TreeItem::project(&group);
+
+        assert_eq!(tree_item.kind, TreeNodeKind::Project);
+        assert_eq!(tree_item.project_name, "my-project");
+        assert_eq!(tree_item.project_path, "/path/to/my-project");
+        assert!(tree_item.session.is_none());
+        assert_eq!(tree_item.child_count, 5);
+    }
+
+    #[test]
+    fn test_tree_item_session() {
+        let session = SessionListItem {
+            session_id: "test-session-id".to_string(),
+            project_name: "test-project".to_string(),
+            project_path: "/path/to/test-project".to_string(),
+            display: "Hello, world!".to_string(),
+            formatted_time: "2025-01-15 10:30".to_string(),
+            datetime: Utc::now(),
+        };
+
+        let tree_item = TreeItem::session(&session);
+
+        assert_eq!(tree_item.kind, TreeNodeKind::Session);
+        assert_eq!(tree_item.project_name, "test-project");
+        assert_eq!(tree_item.project_path, "/path/to/test-project");
+        assert!(tree_item.session.is_some());
+        assert_eq!(tree_item.session.unwrap().session_id, "test-session-id");
+        assert_eq!(tree_item.child_count, 0);
+    }
+
+    #[test]
+    fn test_tree_item_project_empty_sessions() {
+        let group = ProjectGroup {
+            project_path: "/path/to/empty".to_string(),
+            project_name: "empty-project".to_string(),
+            sessions: vec![],
+        };
+
+        let tree_item = TreeItem::project(&group);
+
+        assert_eq!(tree_item.kind, TreeNodeKind::Project);
+        assert_eq!(tree_item.child_count, 0);
+    }
+
+    // Model 階層表示関連のテスト
+    #[test]
+    fn test_model_with_project_groups() {
+        let groups = vec![
+            create_project_group("project-a", 2),
+            create_project_group("project-b", 3),
+        ];
+        let model = Model::new().with_project_groups(groups);
+
+        assert_eq!(model.project_groups.len(), 2);
+        // 初期状態は折りたたみなので、プロジェクトノードのみ
+        assert_eq!(model.tree_items.len(), 2);
+        assert_eq!(model.tree_items[0].kind, TreeNodeKind::Project);
+        assert_eq!(model.tree_items[1].kind, TreeNodeKind::Project);
+    }
+
+    #[test]
+    fn test_model_toggle_project() {
+        let groups = vec![
+            create_project_group("project-a", 2),
+            create_project_group("project-b", 3),
+        ];
+        let mut model = Model::new().with_project_groups(groups);
+
+        // 展開前: 2 プロジェクト
+        assert_eq!(model.tree_items.len(), 2);
+
+        // project-a を展開
+        model.toggle_project("/path/to/project-a");
+        // 2 プロジェクト + 2 セッション = 4
+        assert_eq!(model.tree_items.len(), 4);
+        assert_eq!(model.tree_items[0].kind, TreeNodeKind::Project);
+        assert_eq!(model.tree_items[1].kind, TreeNodeKind::Session);
+        assert_eq!(model.tree_items[2].kind, TreeNodeKind::Session);
+        assert_eq!(model.tree_items[3].kind, TreeNodeKind::Project);
+
+        // project-a を折りたたみ
+        model.toggle_project("/path/to/project-a");
+        assert_eq!(model.tree_items.len(), 2);
+    }
+
+    #[test]
+    fn test_model_expand_all() {
+        let groups = vec![
+            create_project_group("project-a", 2),
+            create_project_group("project-b", 3),
+        ];
+        let mut model = Model::new().with_project_groups(groups);
+
+        model.expand_all();
+        // 2 プロジェクト + 2 セッション + 3 セッション = 7
+        assert_eq!(model.tree_items.len(), 7);
+    }
+
+    #[test]
+    fn test_model_collapse_all() {
+        let groups = vec![
+            create_project_group("project-a", 2),
+            create_project_group("project-b", 3),
+        ];
+        let mut model = Model::new().with_project_groups(groups);
+
+        model.expand_all();
+        assert_eq!(model.tree_items.len(), 7);
+
+        model.collapse_all();
+        assert_eq!(model.tree_items.len(), 2);
+    }
+
+    #[test]
+    fn test_model_total_session_count() {
+        let groups = vec![
+            create_project_group("project-a", 2),
+            create_project_group("project-b", 3),
+        ];
+        let model = Model::new().with_project_groups(groups);
+
+        assert_eq!(model.total_session_count(), 5);
+    }
+
+    #[test]
+    fn test_model_selected_tree_item() {
+        let groups = vec![create_project_group("project-a", 2)];
+        let mut model = Model::new().with_project_groups(groups);
+
+        // 最初はプロジェクトが選択されている
+        let item = model.selected_tree_item().unwrap();
+        assert_eq!(item.kind, TreeNodeKind::Project);
+
+        // 展開して移動
+        model.toggle_project("/path/to/project-a");
+        model.selected_index = 1;
+        let item = model.selected_tree_item().unwrap();
+        assert_eq!(item.kind, TreeNodeKind::Session);
+    }
+
+    #[test]
+    fn test_model_move_down_with_tree_items() {
+        let groups = vec![create_project_group("project-a", 2)];
+        let mut model = Model::new().with_project_groups(groups);
+        model.toggle_project("/path/to/project-a");
+
+        // tree_items: [Project, Session, Session]
+        assert_eq!(model.selected_index, 0);
+
+        model.move_down();
+        assert_eq!(model.selected_index, 1);
+
+        model.move_down();
+        assert_eq!(model.selected_index, 2);
+
+        // 末尾では動かない
+        model.move_down();
+        assert_eq!(model.selected_index, 2);
+    }
+
+    #[test]
+    fn test_model_expand_current_project() {
+        let groups = vec![create_project_group("project-a", 2)];
+        let mut model = Model::new().with_project_groups(groups);
+
+        assert_eq!(model.tree_items.len(), 1);
+
+        model.expand_current_project();
+        assert_eq!(model.tree_items.len(), 3);
+    }
+
+    #[test]
+    fn test_model_collapse_current_project() {
+        let groups = vec![create_project_group("project-a", 2)];
+        let mut model = Model::new().with_project_groups(groups);
+        model.toggle_project("/path/to/project-a");
+
+        // セッションを選択
+        model.selected_index = 1;
+        model.collapse_current_project();
+
+        // 折りたたまれてプロジェクトが選択される
+        assert_eq!(model.tree_items.len(), 1);
+        assert_eq!(model.selected_index, 0);
     }
 }
