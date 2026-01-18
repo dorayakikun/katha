@@ -95,6 +95,7 @@ fn render_content(frame: &mut Frame, area: Rect, model: &Model) {
             .entries
             .iter()
             .filter(|e| e.is_user() || e.is_assistant())
+            .filter(|e| e.display_text().is_some()) // テキストがあるメッセージのみ表示
             .collect();
 
         if messages.is_empty() {

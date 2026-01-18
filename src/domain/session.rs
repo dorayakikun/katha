@@ -266,6 +266,75 @@ mod tests {
     }
 
     #[test]
+    fn test_display_text_returns_none_for_tool_use_only() {
+        use crate::domain::message::{ContentBlock, Message, MessageContent};
+        use serde_json::json;
+
+        // ツール呼び出しのみのメッセージ
+        let entry = SessionEntry {
+            entry_type: "assistant".to_string(),
+            message: Some(Message {
+                role: "assistant".to_string(),
+                content: MessageContent::Blocks(vec![ContentBlock::ToolUse {
+                    id: "tool_123".to_string(),
+                    name: "Read".to_string(),
+                    input: json!({"file_path": "/test/file.rs"}),
+                }]),
+                model: None,
+                id: None,
+                stop_reason: None,
+                usage: None,
+            }),
+            ..Default::default()
+        };
+        assert!(entry.display_text().is_none());
+    }
+
+    #[test]
+    fn test_display_text_returns_none_for_no_message() {
+        // メッセージなしのエントリ
+        let entry = SessionEntry {
+            entry_type: "user".to_string(),
+            message: None,
+            ..Default::default()
+        };
+        assert!(entry.display_text().is_none());
+    }
+
+    #[test]
+    fn test_display_text_returns_text_with_tool_use() {
+        use crate::domain::message::{ContentBlock, Message, MessageContent};
+        use serde_json::json;
+
+        // テキスト + ツール呼び出しのメッセージ
+        let entry = SessionEntry {
+            entry_type: "assistant".to_string(),
+            message: Some(Message {
+                role: "assistant".to_string(),
+                content: MessageContent::Blocks(vec![
+                    ContentBlock::Text {
+                        text: "Let me read the file.".to_string(),
+                    },
+                    ContentBlock::ToolUse {
+                        id: "tool_123".to_string(),
+                        name: "Read".to_string(),
+                        input: json!({"file_path": "/test/file.rs"}),
+                    },
+                ]),
+                model: None,
+                id: None,
+                stop_reason: None,
+                usage: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            entry.display_text(),
+            Some("Let me read the file.".to_string())
+        );
+    }
+
+    #[test]
     fn test_session_from_entries() {
         let entries = vec![
             SessionEntry {
