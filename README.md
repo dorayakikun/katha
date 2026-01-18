@@ -1,4 +1,4 @@
-# katha
+# katha /ˈkɑːtʰɑː/
 
 A Terminal User Interface (TUI) for browsing Claude Code conversation history.
 
