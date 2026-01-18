@@ -5,6 +5,7 @@ A Terminal User Interface (TUI) for browsing Claude Code conversation history.
 ## Features
 
 - Browse session history grouped by project
+- Hierarchical project tree view with expand/collapse functionality
 - Full-text search across projects and conversations
 - Filter by date range (Today, Last 7 days, Last 30 days) and project name
 - Export sessions to Markdown or JSON format
@@ -39,6 +40,10 @@ katha
 |-----|--------|
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
+| `l` / `→` | Expand project |
+| `h` / `←` | Collapse project |
+| `E` | Expand all projects |
+| `C` | Collapse all projects |
 | `Enter` | View session details |
 | `Esc` | Back / Clear filters |
 | `q` | Quit |

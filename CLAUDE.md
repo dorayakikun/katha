@@ -55,11 +55,20 @@ cargo run -- --count-sessions
   - `event.rs`: キーボードイベント処理
 - `views/`: 各画面のレンダリング
 - `widgets/`: 再利用可能な UI コンポーネント
+  - `project_tree.rs`: プロジェクト階層ツリーウィジェット
+
+### Data Structures
+
+ツリービュー表示に関連する主要な型:
+
+- **`ProjectGroup`**: プロジェクトごとにセッションをグループ化した構造体
+- **`TreeItem`**: ツリー表示用のアイテム（プロジェクト or セッション）
+- **`TreeNodeKind`**: ツリーノードの種類を表す enum（`Project` / `Session`）
 
 ### Data Flow
 
 1. `App::load_sessions()` で `~/.claude/history.jsonl` を読み込み
-2. プロジェクトごとにグループ化して `SessionListItem` に変換
+2. `ProjectGroup` に変換し、階層ツリー（`TreeItem`）を構築
 3. ユーザーがセッションを選択すると `SessionReader` で詳細を読み込み
 4. TEA の update 関数でモデルを更新、views でレンダリング
 
