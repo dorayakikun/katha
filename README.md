@@ -12,7 +12,17 @@ A Terminal User Interface (TUI) for browsing Claude Code conversation history.
 
 ## Installation
 
+### From GitHub
+
 ```bash
+cargo install --git https://github.com/dorayakikun/katha
+```
+
+### From source
+
+```bash
+git clone https://github.com/dorayakikun/katha
+cd katha
 cargo install --path .
 ```
 
