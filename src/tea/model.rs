@@ -3,9 +3,10 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::Session;
+use crate::domain::{Session, SessionEntry};
 use crate::export::ExportFormat;
 use crate::search::{FilterCriteria, FilterField, SearchQuery};
+use crate::widgets::MessageBlock;
 
 /// ツリーノードの種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +172,12 @@ pub struct Model {
     pub current_session: Option<Session>,
     /// 詳細表示のスクロールオフセット
     pub detail_scroll_offset: usize,
+    /// 詳細表示のカーソル行（ビューポート内）
+    pub detail_cursor_row: usize,
+    /// 詳細表示のビューポート幅（ボーダー除外）
+    pub detail_viewport_width: usize,
+    /// 詳細表示のビューポート高さ（ボーダー除外）
+    pub detail_viewport_height: usize,
     /// プレビュー用のセッション情報
     pub preview_session: Option<SessionPreview>,
     /// 検索クエリ
@@ -205,6 +212,11 @@ pub struct Model {
     pub tree_items: Vec<TreeItem>,
 }
 
+struct DetailLayout {
+    message_ranges: Vec<(usize, usize)>,
+    total_lines: usize,
+}
+
 impl Default for Model {
     fn default() -> Self {
         Self::new()
@@ -222,6 +234,9 @@ impl Model {
             previous_view_mode: ViewMode::default(),
             current_session: None,
             detail_scroll_offset: 0,
+            detail_cursor_row: 0,
+            detail_viewport_width: 0,
+            detail_viewport_height: 0,
             preview_session: None,
             search_query: SearchQuery::default(),
             filter_criteria: FilterCriteria::default(),
@@ -537,6 +552,19 @@ impl Model {
         self.detail_scroll_offset = 0;
     }
 
+    /// 詳細表示のビューポートを更新
+    pub fn set_detail_viewport(&mut self, width: usize, height: usize) {
+        self.detail_viewport_width = width;
+        self.detail_viewport_height = height;
+        if height > 0 {
+            self.detail_cursor_row = self.detail_cursor_row.min(height.saturating_sub(1));
+        } else {
+            self.detail_cursor_row = 0;
+        }
+        let max_scroll = self.detail_max_scroll();
+        self.detail_scroll_offset = self.detail_scroll_offset.min(max_scroll);
+    }
+
     /// 上にスクロール
     pub fn scroll_up(&mut self, amount: usize) {
         self.detail_scroll_offset = self.detail_scroll_offset.saturating_sub(amount);
@@ -545,6 +573,131 @@ impl Model {
     /// 下にスクロール（最大値を指定）
     pub fn scroll_down(&mut self, amount: usize, max: usize) {
         self.detail_scroll_offset = (self.detail_scroll_offset + amount).min(max);
+    }
+
+    /// 詳細表示のメッセージ一覧
+    pub fn detail_message_entries(&self) -> Vec<&SessionEntry> {
+        let Some(session) = &self.current_session else {
+            return Vec::new();
+        };
+        session
+            .entries
+            .iter()
+            .filter(|entry| (entry.is_user() || entry.is_assistant()) && entry.display_text().is_some())
+            .collect()
+    }
+
+    fn detail_layout(&self) -> Option<DetailLayout> {
+        let width = self.detail_viewport_width.max(1);
+        let entries = self.detail_message_entries();
+        if entries.is_empty() {
+            return None;
+        }
+        let mut message_ranges = Vec::with_capacity(entries.len());
+        let mut total_lines = 0usize;
+
+        for entry in entries {
+            let block = MessageBlock::new(entry, width as u16);
+            let lines = block.to_lines();
+            let mut line_count = 0usize;
+            for line in lines {
+                let line_width = line.width().max(1);
+                let wrapped = (line_width + width - 1) / width;
+                line_count += wrapped.max(1);
+            }
+            let start = total_lines;
+            let end = total_lines + line_count;
+            message_ranges.push((start, end));
+            total_lines = end;
+        }
+
+        Some(DetailLayout {
+            message_ranges,
+            total_lines,
+        })
+    }
+
+    pub fn detail_max_scroll(&self) -> usize {
+        let Some(layout) = self.detail_layout() else {
+            return 0;
+        };
+        let viewport = self.detail_viewport_height.max(1);
+        layout.total_lines.saturating_sub(viewport)
+    }
+
+    pub fn detail_cursor_line(&self) -> Option<usize> {
+        let layout = self.detail_layout()?;
+        if layout.total_lines == 0 {
+            return None;
+        }
+        let line = self.detail_scroll_offset + self.detail_cursor_row;
+        Some(line.min(layout.total_lines.saturating_sub(1)))
+    }
+
+    pub fn detail_entry_for_cursor(&self) -> Option<&SessionEntry> {
+        let line = self.detail_cursor_line()?;
+        let layout = self.detail_layout()?;
+        let index = layout
+            .message_ranges
+            .iter()
+            .position(|(start, end)| line >= *start && line < *end)?;
+        let entries = self.detail_message_entries();
+        entries.get(index).copied()
+    }
+
+    pub fn detail_total_lines(&self) -> usize {
+        self.detail_layout().map(|layout| layout.total_lines).unwrap_or(0)
+    }
+
+    pub fn move_detail_cursor_up(&mut self, amount: usize) {
+        let Some(layout) = self.detail_layout() else {
+            return;
+        };
+        if layout.total_lines == 0 {
+            return;
+        }
+        let mut steps = amount.max(1);
+        while steps > 0 {
+            if self.detail_scroll_offset == 0 && self.detail_cursor_row == 0 {
+                break;
+            }
+            if self.detail_cursor_row > 0 {
+                self.detail_cursor_row -= 1;
+            } else {
+                self.detail_scroll_offset = self.detail_scroll_offset.saturating_sub(1);
+            }
+            steps -= 1;
+        }
+    }
+
+    pub fn move_detail_cursor_down(&mut self, amount: usize) {
+        let Some(layout) = self.detail_layout() else {
+            return;
+        };
+        if layout.total_lines == 0 {
+            return;
+        }
+        let viewport = self.detail_viewport_height.max(1);
+        let mut steps = amount.max(1);
+        while steps > 0 {
+            let line = self.detail_scroll_offset + self.detail_cursor_row;
+            if line + 1 >= layout.total_lines {
+                break;
+            }
+            if self.detail_cursor_row + 1 < viewport {
+                self.detail_cursor_row += 1;
+            } else {
+                self.detail_scroll_offset += 1;
+            }
+            steps -= 1;
+        }
+        let max_scroll = layout.total_lines.saturating_sub(viewport);
+        self.detail_scroll_offset = self.detail_scroll_offset.min(max_scroll);
+    }
+
+    pub fn reset_detail_cursor(&mut self) {
+        self.detail_scroll_offset = 0;
+        self.detail_cursor_row = 0;
     }
 
     /// 選択中のセッションからプレビューを更新

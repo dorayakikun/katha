@@ -2,9 +2,6 @@ use super::message::Message;
 use super::model::{ExportStatus, Model, TreeNodeKind, ViewMode};
 use crate::search::DateRange;
 
-/// スクロール量
-const SCROLL_AMOUNT: usize = 3;
-
 /// TEA の update 関数
 /// Message を受け取り Model を更新する純粋関数
 pub fn update(model: &mut Model, msg: Message) {
@@ -39,30 +36,32 @@ pub fn update(model: &mut Model, msg: Message) {
                     TreeNodeKind::Session => {
                         // セッションノードの場合は詳細画面に遷移
                         model.view_mode = ViewMode::SessionDetail;
-                        model.reset_scroll();
+                        model.reset_detail_cursor();
                     }
                 }
             } else if model.selected_session().is_some() {
                 // 旧方式（互換性のため）
                 model.view_mode = ViewMode::SessionDetail;
-                model.reset_scroll();
+                model.reset_detail_cursor();
             }
         }
         Message::BackToList => {
             // 一覧画面に戻る
             model.view_mode = ViewMode::SessionList;
             model.current_session = None;
-            model.reset_scroll();
+            model.reset_detail_cursor();
         }
-        Message::ScrollUp => {
-            model.scroll_up(SCROLL_AMOUNT);
+        Message::ScrollUp(amount) => {
+            model.move_detail_cursor_up(amount);
         }
-        Message::ScrollDown => {
-            // 最大値は描画時に計算されるため、ここでは十分大きな値を指定
-            model.scroll_down(SCROLL_AMOUNT, usize::MAX);
+        Message::ScrollDown(amount) => {
+            model.move_detail_cursor_down(amount);
         }
+        Message::CopySelectedMessage => {}
+        Message::CopySelectedMessageWithMeta => {}
         Message::SessionLoaded(session) => {
             model.current_session = Some(session);
+            model.reset_detail_cursor();
         }
         Message::SessionLoadFailed(_error) => {
             // エラー時は一覧に戻る

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -10,6 +10,18 @@ use crate::tea::{ExportStatus, Message, ViewMode};
 pub struct EventHandler {
     /// ポーリングタイムアウト
     timeout: Duration,
+    /// 詳細画面での連続移動時刻
+    last_detail_move: Option<Instant>,
+    /// 詳細画面での連続移動方向
+    last_detail_direction: Option<DetailMoveDirection>,
+    /// 詳細画面での移動速度
+    detail_move_speed: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DetailMoveDirection {
+    Up,
+    Down,
 }
 
 impl Default for EventHandler {
@@ -23,15 +35,21 @@ impl EventHandler {
     pub fn new() -> Self {
         Self {
             timeout: Duration::from_millis(100),
+            last_detail_move: None,
+            last_detail_direction: None,
+            detail_move_speed: 1,
         }
     }
 
     /// イベントをポーリングして Message に変換
     pub fn poll(
-        &self,
+        &mut self,
         view_mode: ViewMode,
         export_status: Option<&ExportStatus>,
     ) -> Result<Message, KathaError> {
+        if view_mode != ViewMode::SessionDetail {
+            self.reset_detail_move();
+        }
         // Export中は短いタイムアウトでスピナーアニメーションを更新
         let timeout = if view_mode == ViewMode::Export {
             Duration::from_millis(16) // ~60fps for smooth spinner
@@ -50,7 +68,7 @@ impl EventHandler {
 
     /// キーイベントを Message に変換
     fn key_to_message(
-        &self,
+        &mut self,
         key: KeyEvent,
         view_mode: ViewMode,
         export_status: Option<&ExportStatus>,
@@ -104,20 +122,36 @@ impl EventHandler {
     }
 
     /// セッション詳細画面のキーマッピング
-    fn session_detail_key(&self, key: KeyEvent) -> Message {
-        match key.code {
+    fn session_detail_key(&mut self, key: KeyEvent) -> Message {
+        let msg = match key.code {
             // Esc または q で一覧に戻る
             KeyCode::Esc | KeyCode::Char('q') => Message::BackToList,
             // 上にスクロール
-            KeyCode::Char('k') | KeyCode::Up => Message::ScrollUp,
+            KeyCode::Char('k') | KeyCode::Up => {
+                let step = self.detail_move_step(DetailMoveDirection::Up);
+                Message::ScrollUp(step)
+            }
             // 下にスクロール
-            KeyCode::Char('j') | KeyCode::Down => Message::ScrollDown,
+            KeyCode::Char('j') | KeyCode::Down => {
+                let step = self.detail_move_step(DetailMoveDirection::Down);
+                Message::ScrollDown(step)
+            }
+            // 選択中メッセージをコピー
+            KeyCode::Char('y') => Message::CopySelectedMessage,
+            // 選択中メッセージをメタ情報付きでコピー
+            KeyCode::Char('Y') => Message::CopySelectedMessageWithMeta,
             // エクスポートダイアログ表示
             KeyCode::Char('e') => Message::StartExport,
             // ヘルプ表示
             KeyCode::Char('?') => Message::ShowHelp,
             _ => Message::None,
+        };
+
+        if !matches!(msg, Message::ScrollUp(_) | Message::ScrollDown(_)) {
+            self.reset_detail_move();
         }
+
+        msg
     }
 
     /// 検索モードのキーマッピング
@@ -179,6 +213,47 @@ impl EventHandler {
             _ => Message::None,
         }
     }
+
+    fn detail_move_step(&mut self, direction: DetailMoveDirection) -> usize {
+        let now = Instant::now();
+        let accel_threshold = Duration::from_millis(80);
+        let steady_threshold = Duration::from_millis(180);
+        let decel_threshold = Duration::from_millis(320);
+        let max_speed = 8usize;
+
+        let mut speed = self.detail_move_speed.max(1);
+        let same_direction = self.last_detail_direction == Some(direction);
+
+        if let Some(last) = self.last_detail_move {
+            let delta = now.saturating_duration_since(last);
+            if same_direction {
+                if delta <= accel_threshold {
+                    speed = (speed + 1).min(max_speed);
+                } else if delta <= steady_threshold {
+                    speed = speed.min(max_speed);
+                } else if delta <= decel_threshold {
+                    speed = speed.saturating_sub(1).max(1);
+                } else {
+                    speed = 1;
+                }
+            } else {
+                speed = 1;
+            }
+        } else {
+            speed = 1;
+        }
+
+        self.detail_move_speed = speed;
+        self.last_detail_move = Some(now);
+        self.last_detail_direction = Some(direction);
+        speed
+    }
+
+    fn reset_detail_move(&mut self) {
+        self.last_detail_move = None;
+        self.last_detail_direction = None;
+        self.detail_move_speed = 1;
+    }
 }
 
 #[cfg(test)]
@@ -193,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_session_list_quit() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // q キー
         let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty());
@@ -219,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_session_list_move_up() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // k キー
         let key = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::empty());
@@ -238,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_session_list_move_down() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // j キー
         let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty());
@@ -257,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_session_list_enter_detail() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         assert!(matches!(
@@ -268,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_session_detail_back_to_list() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // Esc キー
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
@@ -287,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_session_detail_ctrl_c_quit() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // Ctrl+C は詳細画面でも終了
         let key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
@@ -299,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_session_list_unknown() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::empty());
         assert!(matches!(
@@ -310,45 +385,45 @@ mod tests {
 
     #[test]
     fn test_session_detail_scroll_up() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // k キー
         let key = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::empty());
         assert!(matches!(
             handler.key_to_message(key, ViewMode::SessionDetail, None),
-            Message::ScrollUp
+            Message::ScrollUp(_)
         ));
 
         // 上矢印
         let key = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
         assert!(matches!(
             handler.key_to_message(key, ViewMode::SessionDetail, None),
-            Message::ScrollUp
+            Message::ScrollUp(_)
         ));
     }
 
     #[test]
     fn test_session_detail_scroll_down() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // j キー
         let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty());
         assert!(matches!(
             handler.key_to_message(key, ViewMode::SessionDetail, None),
-            Message::ScrollDown
+            Message::ScrollDown(_)
         ));
 
         // 下矢印
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         assert!(matches!(
             handler.key_to_message(key, ViewMode::SessionDetail, None),
-            Message::ScrollDown
+            Message::ScrollDown(_)
         ));
     }
 
     #[test]
     fn test_session_list_start_search() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         let key = KeyEvent::new(KeyCode::Char('/'), KeyModifiers::empty());
         assert!(matches!(
@@ -359,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_session_list_start_filter() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         let key = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::empty());
         assert!(matches!(
@@ -370,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_search_mode() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // 文字入力
         let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
@@ -403,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_filter_mode() {
-        let handler = EventHandler::new();
+        let mut handler = EventHandler::new();
 
         // Tab
         let key = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());

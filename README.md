@@ -62,6 +62,12 @@ katha
 | `e` | Export dialog |
 | `?` | Help |
 
+### Detail Actions
+| Key | Action |
+|-----|--------|
+| `y` | Copy selected message |
+| `Y` | Copy selected message with meta |
+
 ## Requirements
 
 - Rust 1.70+

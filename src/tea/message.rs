@@ -20,9 +20,13 @@ pub enum Message {
     /// 一覧画面に戻る
     BackToList,
     /// 上にスクロール
-    ScrollUp,
+    ScrollUp(usize),
     /// 下にスクロール
-    ScrollDown,
+    ScrollDown(usize),
+    /// 選択中メッセージをコピー
+    CopySelectedMessage,
+    /// 選択中メッセージをメタ情報付きでコピー
+    CopySelectedMessageWithMeta,
     /// セッション読み込み完了
     SessionLoaded(Session),
     /// セッション読み込みエラー

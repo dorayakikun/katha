@@ -17,6 +17,7 @@ pub struct StatusBar<'a> {
     view_mode: ViewMode,
     search_query: Option<&'a str>,
     project_filter: Option<&'a str>,
+    error_message: Option<&'a str>,
 }
 
 impl<'a> StatusBar<'a> {
@@ -37,6 +38,7 @@ impl<'a> StatusBar<'a> {
             view_mode: model.view_mode,
             search_query,
             project_filter,
+            error_message: model.error_message.as_deref(),
         }
     }
 
@@ -101,6 +103,14 @@ impl Widget for StatusBar<'_> {
             spans.push(Span::styled(
                 format!("Search: \"{}\"", query),
                 Style::default().fg(Color::Green),
+            ));
+        }
+
+        if let Some(error) = self.error_message {
+            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                format!("Error: {}", error),
+                Style::default().fg(Color::Red),
             ));
         }
 

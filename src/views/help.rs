@@ -11,8 +11,8 @@ use crate::tea::Model;
 /// キーバインド一覧
 const KEYBINDINGS: &[(&str, &str, &str)] = &[
     // Navigation
-    ("j / Down", "Move down", "List/Detail"),
-    ("k / Up", "Move up", "List/Detail"),
+    ("j / Down", "Move down / Scroll down", "List/Detail"),
+    ("k / Up", "Move up / Scroll up", "List/Detail"),
     ("Enter", "View detail", "List"),
     ("Esc", "Back / Clear filter", "All"),
     // Search & Filter
@@ -20,6 +20,9 @@ const KEYBINDINGS: &[(&str, &str, &str)] = &[
     ("f", "Filter panel", "List"),
     ("Tab", "Switch field", "Filter"),
     ("c", "Clear filter", "Filter"),
+    // Detail actions
+    ("y", "Copy message", "Detail"),
+    ("Y", "Copy message with meta", "Detail"),
     // Export
     ("e", "Export session", "List/Detail"),
     // Other

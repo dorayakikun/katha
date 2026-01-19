@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use crossterm::{execute, clipboard::CopyToClipboard};
+use ratatui::layout::{Constraint, Layout, Rect};
 use tracing::{debug, trace};
 
 use crate::KathaError;
@@ -112,6 +114,19 @@ impl App {
         Ok(())
     }
 
+    fn update_detail_viewport(&mut self, area: Rect) {
+        let layout = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
+        .split(area);
+        let content = layout[1];
+        let width = content.width.saturating_sub(2) as usize;
+        let height = content.height.saturating_sub(2) as usize;
+        self.model.set_detail_viewport(width, height);
+    }
+
     /// エクスポートを別スレッドで開始
     fn start_export(&self) {
         let session = match self.model.current_session.clone() {
@@ -176,6 +191,44 @@ impl App {
         }
     }
 
+    fn copy_selected_message(&self, with_meta: bool) -> Result<(), String> {
+        let entry = self.selected_detail_entry()?;
+        let text = entry
+            .display_text()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "Selected message has no text".to_string())?;
+
+        let content = if with_meta {
+            let role = if entry.is_user() { "user" } else { "assistant" };
+            let timestamp = entry
+                .datetime()
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default();
+            if timestamp.is_empty() {
+                format!("{}\n{}", role, text)
+            } else {
+                format!("{} {}\n{}", role, timestamp, text)
+            }
+        } else {
+            text
+        };
+
+        execute!(
+            std::io::stdout(),
+            CopyToClipboard::to_clipboard_from(content)
+        )
+        .map_err(|e| format!("Clipboard copy failed: {}", e))?;
+
+        Ok(())
+    }
+
+    fn selected_detail_entry(&self) -> Result<&crate::domain::SessionEntry, String> {
+        self.model
+            .detail_entry_for_cursor()
+            .ok_or_else(|| "No message selected".to_string())
+    }
+
+
     /// メインループ
     pub fn run(&mut self) -> Result<(), KathaError> {
         debug!(
@@ -193,6 +246,20 @@ impl App {
 
             // 2. view_mode に応じた描画
             let view_mode = self.model.view_mode;
+            let area = {
+                let terminal = self.terminal.inner();
+                let size = terminal
+                    .size()
+                    .map_err(|e| KathaError::Terminal(e.to_string()))?;
+                Rect::new(0, 0, size.width, size.height)
+            };
+            let needs_detail = matches!(view_mode, ViewMode::SessionDetail)
+                || (matches!(view_mode, ViewMode::Help | ViewMode::Export)
+                    && matches!(self.model.previous_view_mode, ViewMode::SessionDetail));
+            if needs_detail {
+                self.update_detail_viewport(area);
+            }
+
             self.terminal
                 .inner()
                 .draw(|frame| match view_mode {
@@ -239,10 +306,7 @@ impl App {
             trace!("Event message: {:?}", msg);
 
             // キー入力があったらエラーメッセージをクリア（セッション一覧画面のみ）
-            if !matches!(msg, Message::None)
-                && matches!(view_mode, ViewMode::SessionList)
-                && self.model.error_message.is_some()
-            {
+            if !matches!(msg, Message::None) && self.model.error_message.is_some() {
                 update(&mut self.model, Message::ClearError);
             }
 
@@ -294,6 +358,14 @@ impl App {
                 } else {
                     // 既にセッションが読み込まれている場合はダイアログを開く
                     update(&mut self.model, msg);
+                }
+            } else if matches!(
+                msg,
+                Message::CopySelectedMessage | Message::CopySelectedMessageWithMeta
+            ) {
+                let with_meta = matches!(msg, Message::CopySelectedMessageWithMeta);
+                if let Err(error) = self.copy_selected_message(with_meta) {
+                    update(&mut self.model, Message::ShowError(error));
                 }
             } else {
                 update(&mut self.model, msg);

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::tea::Model;
-use crate::widgets::{MessageBlock, StatusBar};
+use crate::widgets::{LineHighlight, MessageBlock, StatusBar};
 
 /// セッション詳細ビューをレンダリング
 pub fn render_session_detail(frame: &mut Frame, model: &Model) {
@@ -89,14 +89,9 @@ fn render_content(frame: &mut Frame, area: Rect, model: &Model) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    if let Some(session) = &model.current_session {
+    if model.current_session.is_some() {
         // セッションが読み込まれている場合
-        let messages: Vec<_> = session
-            .entries
-            .iter()
-            .filter(|e| e.is_user() || e.is_assistant())
-            .filter(|e| e.display_text().is_some()) // テキストがあるメッセージのみ表示
-            .collect();
+        let messages = model.detail_message_entries();
 
         if messages.is_empty() {
             let empty = Paragraph::new("No messages found")
@@ -112,12 +107,13 @@ fn render_content(frame: &mut Frame, area: Rect, model: &Model) {
         // メッセージをテキストに変換
         let mut lines: Vec<Line> = Vec::new();
 
-        for entry in messages {
-            let message_block = MessageBlock::new(entry, inner_width);
-            lines.extend(message_block.to_lines());
+        for entry in messages.iter() {
+            let message_block = MessageBlock::new(*entry, inner_width);
+            let block_lines = message_block.to_lines();
+            lines.extend(block_lines);
         }
 
-        let total_lines = lines.len();
+        let total_lines = model.detail_total_lines();
         let visible_height = area.height.saturating_sub(2) as usize; // ボーダー分を除く
 
         // スクロールインジケーターを表示
@@ -138,12 +134,24 @@ fn render_content(frame: &mut Frame, area: Rect, model: &Model) {
             .title(format!(" Messages{}", scroll_info))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
+        let inner_area = block.inner(area);
 
         let content = Paragraph::new(Text::from(lines))
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((model.detail_scroll_offset as u16, 0));
         frame.render_widget(content, area);
+
+        if visible_height > 0 {
+            let cursor_row = model
+                .detail_cursor_row
+                .min(visible_height.saturating_sub(1)) as u16;
+            let highlight_style = Style::default()
+                .bg(Color::LightBlue)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD);
+            frame.render_widget(LineHighlight::new(cursor_row, highlight_style), inner_area);
+        }
     } else {
         // 読み込み中
         let loading = Paragraph::new("Loading session...")
@@ -172,6 +180,8 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
             ("Esc/q", "Back"),
             ("j/↓", "Down"),
             ("k/↑", "Up"),
+            ("y", "Copy"),
+            ("Y", "Copy+Meta"),
             ("e", "Export"),
             ("?", "Help"),
         ];
