@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Block, StatefulWidget, Widget},
 };
 
-use crate::tea::{TreeItem, TreeNodeKind};
+use crate::tea::{SessionSource, TreeItem, TreeNodeKind};
 
 /// 文字列を指定した文字数で安全に切り詰める（UTF-8 対応）
 fn truncate_str(s: &str, max_chars: usize) -> String {
@@ -187,6 +187,7 @@ impl ProjectTree<'_> {
     fn render_session_line(&self, item: &TreeItem, width: usize) -> Line<'static> {
         let indent = "    ";
         let separator = " │ ";
+        let label_separator = " ";
 
         // 時刻
         let time_str = &item.formatted_time;
@@ -198,8 +199,29 @@ impl ProjectTree<'_> {
             .map(|s| s.latest_user_message.as_str())
             .unwrap_or("");
 
+        let (label_text, label_style) = item
+            .session
+            .as_ref()
+            .map(|s| match s.source {
+                SessionSource::Claude => (
+                    "[Claude]",
+                    Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
+                ),
+                SessionSource::Codex => (
+                    "[Codex]",
+                    Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
+                ),
+            })
+            .unwrap_or(("[Unknown]", Style::default().fg(Color::DarkGray)));
+        let label_width = 8;
+        let label = format!("{:width$}", label_text, width = label_width);
+
         // 表示幅を計算（文字単位）
-        let fixed_width = indent.chars().count() + time_str.chars().count() + separator.chars().count();
+        let fixed_width = indent.chars().count()
+            + time_str.chars().count()
+            + label_separator.chars().count()
+            + label_width
+            + separator.chars().count();
         let display_width = width.saturating_sub(fixed_width);
 
         // UTF-8 安全な切り詰め
@@ -208,6 +230,8 @@ impl ProjectTree<'_> {
         Line::from(vec![
             Span::styled(indent, Style::default().fg(Color::DarkGray)),
             Span::raw(time_str.to_string()),
+            Span::styled(label_separator, Style::default().fg(Color::DarkGray)),
+            Span::styled(label, label_style),
             Span::styled(separator, Style::default().fg(Color::DarkGray)),
             Span::raw(display_text),
         ])

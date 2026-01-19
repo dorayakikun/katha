@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, StatefulWidget, Widget},
 };
 
-use crate::tea::SessionListItem;
+use crate::tea::{SessionListItem, SessionSource};
 
 /// セッションテーブルの状態
 #[derive(Debug, Default)]
@@ -137,6 +137,19 @@ impl SessionTable<'_> {
         let time_width = 16;
         let time = format!("{:width$}", session.formatted_time, width = time_width);
 
+        let (label_text, label_style) = match session.source {
+            SessionSource::Claude => (
+                "[Claude]",
+                Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
+            ),
+            SessionSource::Codex => (
+                "[Codex]",
+                Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
+            ),
+        };
+        let label_width = 8;
+        let label = format!("{:width$}", label_text, width = label_width);
+
         // プロジェクト名（固定幅）
         let project_width = 20;
         let project = if session.project_name.len() > project_width {
@@ -147,7 +160,8 @@ impl SessionTable<'_> {
 
         // 表示テキスト（残りの幅）
         let separator = " │ ";
-        let used_width = time_width + separator.len() + project_width + separator.len();
+        let used_width =
+            time_width + separator.len() + label_width + separator.len() + project_width + separator.len();
         let display_width = width.saturating_sub(used_width);
         let display = if session.latest_user_message.len() > display_width {
             if display_width > 1 {
@@ -164,6 +178,8 @@ impl SessionTable<'_> {
 
         Line::from(vec![
             Span::raw(time),
+            Span::styled(separator, Style::default().fg(Color::DarkGray)),
+            Span::styled(label, label_style),
             Span::styled(separator, Style::default().fg(Color::DarkGray)),
             Span::raw(project),
             Span::styled(separator, Style::default().fg(Color::DarkGray)),

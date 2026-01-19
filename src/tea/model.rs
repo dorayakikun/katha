@@ -23,6 +23,15 @@ pub enum SessionSource {
     Codex,
 }
 
+impl SessionSource {
+    pub fn label(self) -> &'static str {
+        match self {
+            SessionSource::Claude => "Claude",
+            SessionSource::Codex => "Codex",
+        }
+    }
+}
+
 /// ツリー表示用のアイテム
 #[derive(Debug, Clone)]
 pub struct TreeItem {
