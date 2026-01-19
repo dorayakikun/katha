@@ -1,21 +1,38 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use chrono::{DateTime, TimeZone, Utc};
 use crossterm::{execute, clipboard::CopyToClipboard};
 use ratatui::layout::{Constraint, Layout, Rect};
 use tracing::{debug, trace};
 
 use crate::KathaError;
-use crate::config::ClaudePaths;
-use crate::data::{HistoryReader, SessionReader};
+use crate::config::{ClaudePaths, CodexPaths};
+use crate::data::{CodexHistoryReader, CodexSessionInfo, CodexSessionReader, HistoryReader, SessionReader};
 use crate::export::{
     ExportFormat, Exporter, JsonExporter, MarkdownExporter, generate_filename, write_to_file,
 };
 use crate::tea::{
-    ExportStatus, Message, Model, ProjectGroup, SessionListItem, TreeNodeKind, ViewMode, update,
+    ExportStatus, Message, Model, ProjectGroup, SessionListItem, SessionSource, TreeNodeKind,
+    ViewMode, update,
 };
 use crate::tui::{EventHandler, Terminal};
 use crate::views::{render_export_dialog, render_help, render_session_detail, render_session_list};
+
+#[derive(Debug, Clone)]
+struct HistoryItem {
+    session_id: String,
+    project_path: String,
+    display: String,
+    timestamp: i64,
+    source: SessionSource,
+}
+
+fn datetime_from_millis(timestamp_ms: i64) -> DateTime<Utc> {
+    Utc.timestamp_millis_opt(timestamp_ms)
+        .single()
+        .unwrap_or(DateTime::<Utc>::UNIX_EPOCH)
+}
 
 /// アプリケーション
 pub struct App {
@@ -27,6 +44,10 @@ pub struct App {
     event_handler: EventHandler,
     /// Claude パス設定
     paths: Option<ClaudePaths>,
+    /// Codex パス設定
+    codex_paths: Option<CodexPaths>,
+    /// Codex セッション一覧
+    codex_sessions: HashMap<String, CodexSessionInfo>,
     /// 非同期メッセージ送信用
     async_tx: Sender<Message>,
     /// 非同期メッセージ受信用
@@ -46,6 +67,8 @@ impl App {
             terminal,
             event_handler,
             paths: None,
+            codex_paths: None,
+            codex_sessions: HashMap::new(),
             async_tx,
             async_rx,
         })
@@ -54,36 +77,86 @@ impl App {
     /// セッションを読み込み
     pub fn load_sessions(&mut self) -> Result<(), KathaError> {
         let paths = ClaudePaths::new()?;
+        let mut history_items: HashMap<String, Vec<HistoryItem>> = HashMap::new();
 
-        if !paths.history_exists() {
-            // history.jsonl が存在しない場合は空のリストで続行
-            self.paths = Some(paths);
-            return Ok(());
+        if paths.history_exists() {
+            let entries = HistoryReader::read_all(&paths.history_file)?;
+            for entry in entries {
+                history_items
+                    .entry(entry.project.clone())
+                    .or_insert_with(Vec::new)
+                    .push(HistoryItem {
+                        session_id: entry.session_id.clone(),
+                        project_path: entry.project.clone(),
+                        display: entry.display.clone(),
+                        timestamp: entry.timestamp,
+                        source: SessionSource::Claude,
+                    });
+            }
         }
 
-        // プロジェクトごとにグループ化されたエントリを取得
-        let projects = HistoryReader::group_by_project(&paths.history_file)?;
+        self.paths = Some(paths);
+        self.codex_paths = None;
+        self.codex_sessions.clear();
+
+        if let Ok(codex_paths) = CodexPaths::new() {
+            self.codex_sessions =
+                CodexSessionReader::build_session_index(&codex_paths.sessions_dir)?;
+
+            if codex_paths.history_exists() {
+                let entries = CodexHistoryReader::read_all(&codex_paths.history_file)?;
+                for entry in entries {
+                    let project_path = self
+                        .codex_sessions
+                        .get(&entry.session_id)
+                        .and_then(|info| info.cwd.clone())
+                        .unwrap_or_else(|| "Codex".to_string());
+                    history_items
+                        .entry(project_path.clone())
+                        .or_insert_with(Vec::new)
+                        .push(HistoryItem {
+                            session_id: entry.session_id.clone(),
+                            project_path,
+                            display: entry.text.clone(),
+                            timestamp: entry.ts * 1000,
+                            source: SessionSource::Codex,
+                        });
+                }
+            }
+
+            self.codex_paths = Some(codex_paths);
+        }
+
+        if history_items.is_empty() {
+            self.model = Model::new();
+            update(&mut self.model, Message::Initialized);
+            return Ok(());
+        }
 
         // ProjectGroup に変換（全セッションを含む）
         let mut project_groups: Vec<ProjectGroup> = Vec::new();
 
-        for (project, entries) in projects {
+        for (project, mut entries) in history_items {
+            entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
             let project_name = project.rsplit('/').next().unwrap_or(&project).to_string();
 
             // 全エントリを SessionListItem に変換
             // history.jsonl is newest-first; keep only the latest entry per session.
-            let mut seen_session_ids = HashSet::new();
+            let mut seen_session_keys: HashSet<(SessionSource, String)> = HashSet::new();
             let sessions: Vec<SessionListItem> = entries
                 .iter()
-                .filter(|entry| seen_session_ids.insert(entry.session_id.clone()))
+                .filter(|entry| {
+                    seen_session_keys.insert((entry.source, entry.session_id.clone()))
+                })
                 .map(|entry| {
-                    let datetime = entry.datetime();
+                    let datetime = datetime_from_millis(entry.timestamp);
                     let formatted_time = datetime.format("%Y-%m-%d %H:%M").to_string();
 
                     SessionListItem {
                         session_id: entry.session_id.clone(),
+                        source: entry.source,
                         project_name: project_name.clone(),
-                        project_path: project.clone(),
+                        project_path: entry.project_path.clone(),
                         latest_user_message: entry.display.clone(),
                         formatted_time,
                         datetime,
@@ -107,7 +180,6 @@ impl App {
             b_latest.cmp(&a_latest)
         });
 
-        self.paths = Some(paths);
         self.model = Model::new().with_project_groups(project_groups);
         update(&mut self.model, Message::Initialized);
 
@@ -157,8 +229,6 @@ impl App {
 
     /// 選択中のセッションを読み込み
     fn load_current_session(&self) -> Option<Message> {
-        let paths = self.paths.as_ref()?;
-
         // ツリーアイテムからセッション情報を取得
         let selected = if let Some(item) = self.model.selected_tree_item() {
             // Session ノードの場合のみ
@@ -168,26 +238,58 @@ impl App {
             self.model.selected_session()?
         };
 
-        let session_file = SessionReader::session_file_path(
-            &paths.projects_dir,
-            &selected.project_path,
-            &selected.session_id,
-        );
+        match selected.source {
+            SessionSource::Claude => {
+                let paths = self.paths.as_ref()?;
+                let session_file = SessionReader::session_file_path(
+                    &paths.projects_dir,
+                    &selected.project_path,
+                    &selected.session_id,
+                );
 
-        if !session_file.exists() {
-            return Some(Message::SessionLoadFailed(format!(
-                "Session file not found: {}",
-                session_file.display()
-            )));
-        }
+                if !session_file.exists() {
+                    return Some(Message::SessionLoadFailed(format!(
+                        "Session file not found: {}",
+                        session_file.display()
+                    )));
+                }
 
-        match SessionReader::read_session(
-            &session_file,
-            &selected.session_id,
-            &selected.project_path,
-        ) {
-            Ok(session) => Some(Message::SessionLoaded(session)),
-            Err(e) => Some(Message::SessionLoadFailed(e.to_string())),
+                match SessionReader::read_session(
+                    &session_file,
+                    &selected.session_id,
+                    &selected.project_path,
+                ) {
+                    Ok(session) => Some(Message::SessionLoaded(session)),
+                    Err(e) => Some(Message::SessionLoadFailed(e.to_string())),
+                }
+            }
+            SessionSource::Codex => {
+                let info = match self.codex_sessions.get(&selected.session_id) {
+                    Some(info) => info,
+                    None => {
+                        return Some(Message::SessionLoadFailed(format!(
+                            "Codex session not found: {}",
+                            selected.session_id
+                        )));
+                    }
+                };
+
+                if !info.path.exists() {
+                    return Some(Message::SessionLoadFailed(format!(
+                        "Codex session file not found: {}",
+                        info.path.display()
+                    )));
+                }
+
+                match CodexSessionReader::read_session(
+                    &info.path,
+                    &selected.session_id,
+                    &selected.project_path,
+                ) {
+                    Ok(session) => Some(Message::SessionLoaded(session)),
+                    Err(e) => Some(Message::SessionLoadFailed(e.to_string())),
+                }
+            }
         }
     }
 

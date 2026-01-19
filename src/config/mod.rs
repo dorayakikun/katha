@@ -1,3 +1,3 @@
 pub mod paths;
 
-pub use paths::ClaudePaths;
+pub use paths::{ClaudePaths, CodexPaths};

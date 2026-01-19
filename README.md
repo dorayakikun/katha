@@ -72,3 +72,4 @@ katha
 
 - Rust 1.70+
 - Claude Code history data (`~/.claude/`)
+- Codex history data (`~/.codex/`) (optional)

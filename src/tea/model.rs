@@ -17,6 +17,12 @@ pub enum TreeNodeKind {
     Session,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SessionSource {
+    Claude,
+    Codex,
+}
+
 /// ツリー表示用のアイテム
 #[derive(Debug, Clone)]
 pub struct TreeItem {
@@ -142,6 +148,8 @@ impl SessionPreview {
 pub struct SessionListItem {
     /// セッション ID
     pub session_id: String,
+    /// セッションの出所
+    pub source: SessionSource,
     /// プロジェクト名
     pub project_name: String,
     /// プロジェクトパス
@@ -739,6 +747,7 @@ mod tests {
         (0..count)
             .map(|i| SessionListItem {
                 session_id: format!("session-{}", i),
+                source: SessionSource::Claude,
                 project_name: format!("project-{}", i),
                 project_path: format!("/path/to/project-{}", i),
                 latest_user_message: format!("Message {}", i),
@@ -867,6 +876,7 @@ mod tests {
         let sessions: Vec<SessionListItem> = (0..session_count)
             .map(|i| SessionListItem {
                 session_id: format!("{}-session-{}", name, i),
+                source: SessionSource::Claude,
                 project_name: name.to_string(),
                 project_path: format!("/path/to/{}", name),
                 latest_user_message: format!("Message {} for {}", i, name),
@@ -906,6 +916,7 @@ mod tests {
     fn test_tree_item_session() {
         let session = SessionListItem {
             session_id: "test-session-id".to_string(),
+            source: SessionSource::Claude,
             project_name: "test-project".to_string(),
             project_path: "/path/to/test-project".to_string(),
             latest_user_message: "Hello, world!".to_string(),

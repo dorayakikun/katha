@@ -233,6 +233,7 @@ mod tests {
         let sessions = (0..5)
             .map(|i| SessionListItem {
                 session_id: format!("session-{}", i),
+                source: crate::tea::SessionSource::Claude,
                 project_name: format!("project-{}", i),
                 project_path: format!("/path/to/project-{}", i),
                 latest_user_message: format!("Message {}", i),

@@ -93,6 +93,7 @@ mod tests {
         vec![
             SessionListItem {
                 session_id: "1".to_string(),
+                source: crate::tea::SessionSource::Claude,
                 project_name: "my-project".to_string(),
                 project_path: "/path/to/my-project".to_string(),
                 latest_user_message: "Hello world".to_string(),
@@ -101,6 +102,7 @@ mod tests {
             },
             SessionListItem {
                 session_id: "2".to_string(),
+                source: crate::tea::SessionSource::Claude,
                 project_name: "another-app".to_string(),
                 project_path: "/path/to/another-app".to_string(),
                 latest_user_message: "Fix bug in login".to_string(),
@@ -109,6 +111,7 @@ mod tests {
             },
             SessionListItem {
                 session_id: "3".to_string(),
+                source: crate::tea::SessionSource::Claude,
                 project_name: "my-project".to_string(),
                 project_path: "/path/to/my-project".to_string(),
                 latest_user_message: "Add new feature".to_string(),

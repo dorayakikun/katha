@@ -79,6 +79,49 @@ impl ClaudePaths {
     }
 }
 
+/// Codex パス管理
+#[derive(Debug, Clone)]
+pub struct CodexPaths {
+    pub base_dir: PathBuf,
+    pub history_file: PathBuf,
+    pub sessions_dir: PathBuf,
+}
+
+impl CodexPaths {
+    /// デフォルトパスで初期化
+    pub fn new() -> Result<Self, KathaError> {
+        let base_dirs = BaseDirs::new()
+            .ok_or_else(|| KathaError::ConfigError("Cannot find home directory".into()))?;
+
+        let base_dir = base_dirs.home_dir().join(".codex");
+        Self::from_base_dir(base_dir)
+    }
+
+    /// 指定ディレクトリで初期化
+    pub fn from_base_dir(base_dir: PathBuf) -> Result<Self, KathaError> {
+        if !base_dir.exists() {
+            return Err(KathaError::ConfigError(format!(
+                "Codex directory not found: {}",
+                base_dir.display()
+            )));
+        }
+
+        Ok(Self {
+            history_file: base_dir.join("history.jsonl"),
+            sessions_dir: base_dir.join("sessions"),
+            base_dir,
+        })
+    }
+
+    pub fn history_exists(&self) -> bool {
+        self.history_file.exists()
+    }
+
+    pub fn sessions_exists(&self) -> bool {
+        self.sessions_dir.exists()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
