@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -195,8 +195,12 @@ pub struct Model {
     pub error_message: Option<String>,
     /// プロジェクトグループ一覧
     pub project_groups: Vec<ProjectGroup>,
+    /// フィルタ適用後のプロジェクトグループ一覧
+    pub filtered_project_groups: Vec<ProjectGroup>,
     /// 展開されているプロジェクトのパス
     pub expanded_projects: HashSet<String>,
+    /// フィルタ適用前の展開状態
+    pub expanded_projects_before_filter: Option<HashSet<String>>,
     /// ツリー表示用アイテム一覧
     pub tree_items: Vec<TreeItem>,
 }
@@ -230,7 +234,9 @@ impl Model {
             export_status: None,
             error_message: None,
             project_groups: Vec::new(),
+            filtered_project_groups: Vec::new(),
             expanded_projects: HashSet::new(),
+            expanded_projects_before_filter: None,
             tree_items: Vec::new(),
         }
     }
@@ -244,6 +250,12 @@ impl Model {
     /// プロジェクトグループを設定
     pub fn with_project_groups(mut self, groups: Vec<ProjectGroup>) -> Self {
         self.project_groups = groups;
+        self.sessions = self
+            .project_groups
+            .iter()
+            .flat_map(|group| group.sessions.iter().cloned())
+            .collect();
+        self.filtered_project_groups.clear();
         self.rebuild_tree_items();
         self
     }
@@ -252,7 +264,8 @@ impl Model {
     pub fn rebuild_tree_items(&mut self) {
         self.tree_items.clear();
 
-        for group in &self.project_groups {
+        let groups = self.active_project_groups().clone();
+        for group in &groups {
             // プロジェクトノードを追加
             self.tree_items.push(TreeItem::project(group));
 
@@ -267,6 +280,14 @@ impl Model {
         // selected_index が範囲外にならないようにする
         if !self.tree_items.is_empty() && self.selected_index >= self.tree_items.len() {
             self.selected_index = self.tree_items.len() - 1;
+        }
+    }
+
+    fn active_project_groups(&self) -> &Vec<ProjectGroup> {
+        if self.is_filtered {
+            &self.filtered_project_groups
+        } else {
+            &self.project_groups
         }
     }
 
@@ -365,10 +386,10 @@ impl Model {
 
     /// 下に移動
     pub fn move_down(&mut self) {
-        let max_index = if self.is_filtered {
-            self.filtered_indices.len().saturating_sub(1)
-        } else if !self.tree_items.is_empty() {
+        let max_index = if !self.tree_items.is_empty() {
             self.tree_items.len().saturating_sub(1)
+        } else if self.is_filtered {
+            self.filtered_indices.len().saturating_sub(1)
         } else {
             self.sessions.len().saturating_sub(1)
         };
@@ -380,12 +401,18 @@ impl Model {
 
     /// 選択中のセッションを取得
     pub fn selected_session(&self) -> Option<&SessionListItem> {
+        if let Some(item) = self.selected_tree_item() {
+            if item.kind == TreeNodeKind::Session {
+                return item.session.as_ref();
+            }
+        }
+
         if self.is_filtered {
             let actual_index = self.filtered_indices.get(self.selected_index)?;
-            self.sessions.get(*actual_index)
-        } else {
-            self.sessions.get(self.selected_index)
+            return self.sessions.get(*actual_index);
         }
+
+        self.sessions.get(self.selected_index)
     }
 
     /// フィルタされたセッション一覧を取得
@@ -418,6 +445,10 @@ impl Model {
         self.selected_index = 0;
         self.filter_project_input.clear();
         self.date_preset_index = 0;
+        self.filtered_project_groups.clear();
+        self.restore_expanded_projects_after_filter();
+        self.rebuild_tree_items();
+        self.update_preview();
     }
 
     /// 検索を適用
@@ -429,7 +460,11 @@ impl Model {
             &self.search_query,
             &self.filter_criteria,
         );
+        let was_filtered = self.is_filtered;
         self.is_filtered = !self.search_query.is_empty() || self.filter_criteria.is_set();
+        self.rebuild_filtered_project_groups();
+        self.sync_expanded_projects_for_filter(was_filtered);
+        self.rebuild_tree_items();
         self.selected_index = 0;
         self.update_preview();
     }
@@ -444,6 +479,57 @@ impl Model {
         }
 
         self.apply_search();
+    }
+
+    fn rebuild_filtered_project_groups(&mut self) {
+        if !self.is_filtered {
+            self.filtered_project_groups.clear();
+            return;
+        }
+
+        let mut grouped: HashMap<String, Vec<SessionListItem>> = HashMap::new();
+        for index in &self.filtered_indices {
+            if let Some(session) = self.sessions.get(*index) {
+                grouped
+                    .entry(session.project_path.clone())
+                    .or_default()
+                    .push(session.clone());
+            }
+        }
+
+        let mut filtered_groups = Vec::new();
+        for group in &self.project_groups {
+            if let Some(sessions) = grouped.remove(&group.project_path) {
+                filtered_groups.push(ProjectGroup {
+                    project_path: group.project_path.clone(),
+                    project_name: group.project_name.clone(),
+                    sessions,
+                });
+            }
+        }
+
+        self.filtered_project_groups = filtered_groups;
+    }
+
+    fn sync_expanded_projects_for_filter(&mut self, was_filtered: bool) {
+        if self.is_filtered {
+            if !was_filtered {
+                self.expanded_projects_before_filter = Some(self.expanded_projects.clone());
+            }
+            self.expanded_projects = self
+                .filtered_project_groups
+                .iter()
+                .map(|group| group.project_path.clone())
+                .collect();
+        } else if was_filtered {
+            self.restore_expanded_projects_after_filter();
+        }
+    }
+
+    fn restore_expanded_projects_after_filter(&mut self) {
+        if let Some(previous) = self.expanded_projects_before_filter.take() {
+            self.expanded_projects = previous;
+        }
     }
 
     /// スクロールオフセットをリセット
@@ -469,7 +555,7 @@ impl Model {
                 TreeNodeKind::Project => {
                     // プロジェクトノードの場合は最新セッションのプレビューを表示
                     if let Some(group) = self
-                        .project_groups
+                        .active_project_groups()
                         .iter()
                         .find(|g| g.project_path == item.project_path)
                     {

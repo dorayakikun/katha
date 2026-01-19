@@ -13,6 +13,7 @@ pub struct PastedContent {
     pub content_type: String,
 
     /// コンテンツ本体
+    #[serde(default)]
     pub content: String,
 }
 
