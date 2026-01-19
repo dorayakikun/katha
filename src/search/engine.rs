@@ -5,7 +5,7 @@ use crate::tea::SessionListItem;
 pub struct SearchEngine;
 
 impl SearchEngine {
-    /// 検索クエリでフィルタリング（project_name, display を検索）
+    /// 検索クエリでフィルタリング（project_name, latest_user_message を検索）
     pub fn search(sessions: &[SessionListItem], query: &SearchQuery) -> Vec<usize> {
         if query.is_empty() {
             return (0..sessions.len()).collect();
@@ -15,7 +15,8 @@ impl SearchEngine {
             .iter()
             .enumerate()
             .filter(|(_, session)| {
-                query.matches(&session.project_name) || query.matches(&session.display)
+                query.matches(&session.project_name)
+                    || query.matches(&session.latest_user_message)
             })
             .map(|(i, _)| i)
             .collect()
@@ -48,7 +49,7 @@ impl SearchEngine {
                 // 検索クエリにマッチ
                 let matches_query = query.is_empty()
                     || query.matches(&session.project_name)
-                    || query.matches(&session.display);
+                    || query.matches(&session.latest_user_message);
 
                 // フィルタ条件にマッチ
                 let matches_filter =
@@ -94,7 +95,7 @@ mod tests {
                 session_id: "1".to_string(),
                 project_name: "my-project".to_string(),
                 project_path: "/path/to/my-project".to_string(),
-                display: "Hello world".to_string(),
+                latest_user_message: "Hello world".to_string(),
                 formatted_time: "2025-01-15 10:00".to_string(),
                 datetime: Utc.with_ymd_and_hms(2025, 1, 15, 10, 0, 0).unwrap(),
             },
@@ -102,7 +103,7 @@ mod tests {
                 session_id: "2".to_string(),
                 project_name: "another-app".to_string(),
                 project_path: "/path/to/another-app".to_string(),
-                display: "Fix bug in login".to_string(),
+                latest_user_message: "Fix bug in login".to_string(),
                 formatted_time: "2025-01-10 14:30".to_string(),
                 datetime: Utc.with_ymd_and_hms(2025, 1, 10, 14, 30, 0).unwrap(),
             },
@@ -110,7 +111,7 @@ mod tests {
                 session_id: "3".to_string(),
                 project_name: "my-project".to_string(),
                 project_path: "/path/to/my-project".to_string(),
-                display: "Add new feature".to_string(),
+                latest_user_message: "Add new feature".to_string(),
                 formatted_time: "2025-01-05 09:00".to_string(),
                 datetime: Utc.with_ymd_and_hms(2025, 1, 5, 9, 0, 0).unwrap(),
             },
@@ -139,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_by_display() {
+    fn test_search_by_latest_message() {
         let sessions = create_test_sessions();
         let query = SearchQuery {
             text: "bug".to_string(),

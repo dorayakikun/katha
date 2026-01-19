@@ -120,8 +120,8 @@ pub struct SessionPreview {
     pub formatted_time: String,
     /// メッセージ数
     pub message_count: usize,
-    /// 最初のメッセージプレビュー
-    pub first_message: Option<String>,
+    /// 最新のユーザーメッセージプレビュー
+    pub latest_user_message: Option<String>,
 }
 
 impl SessionPreview {
@@ -131,7 +131,7 @@ impl SessionPreview {
             project_name: item.project_name.clone(),
             formatted_time: item.formatted_time.clone(),
             message_count: 0, // 詳細は読み込み時に更新
-            first_message: Some(item.display.clone()),
+            latest_user_message: Some(item.latest_user_message.clone()),
         }
     }
 }
@@ -145,8 +145,8 @@ pub struct SessionListItem {
     pub project_name: String,
     /// プロジェクトパス
     pub project_path: String,
-    /// 表示テキスト（最初のユーザーメッセージ）
-    pub display: String,
+    /// 表示テキスト（最新のユーザーメッセージ）
+    pub latest_user_message: String,
     /// フォーマット済み日時
     pub formatted_time: String,
     /// 日時（フィルタリング用）
@@ -588,7 +588,7 @@ mod tests {
                 session_id: format!("session-{}", i),
                 project_name: format!("project-{}", i),
                 project_path: format!("/path/to/project-{}", i),
-                display: format!("Message {}", i),
+                latest_user_message: format!("Message {}", i),
                 formatted_time: "2025-01-01 00:00".to_string(),
                 datetime: Utc::now(),
             })
@@ -716,7 +716,7 @@ mod tests {
                 session_id: format!("{}-session-{}", name, i),
                 project_name: name.to_string(),
                 project_path: format!("/path/to/{}", name),
-                display: format!("Message {} for {}", i, name),
+                latest_user_message: format!("Message {} for {}", i, name),
                 formatted_time: format!("2025-01-0{} 00:00", i + 1),
                 datetime: Utc::now(),
             })
@@ -755,7 +755,7 @@ mod tests {
             session_id: "test-session-id".to_string(),
             project_name: "test-project".to_string(),
             project_path: "/path/to/test-project".to_string(),
-            display: "Hello, world!".to_string(),
+            latest_user_message: "Hello, world!".to_string(),
             formatted_time: "2025-01-15 10:30".to_string(),
             datetime: Utc::now(),
         };

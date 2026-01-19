@@ -195,7 +195,7 @@ impl ProjectTree<'_> {
         let display = item
             .session
             .as_ref()
-            .map(|s| s.display.as_str())
+            .map(|s| s.latest_user_message.as_str())
             .unwrap_or("");
 
         // 表示幅を計算（文字単位）

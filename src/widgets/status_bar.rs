@@ -134,7 +134,7 @@ mod tests {
                 session_id: format!("session-{}", i),
                 project_name: format!("project-{}", i),
                 project_path: format!("/path/to/project-{}", i),
-                display: format!("Message {}", i),
+                latest_user_message: format!("Message {}", i),
                 formatted_time: "2025-01-01 00:00".to_string(),
                 datetime: Utc::now(),
             })

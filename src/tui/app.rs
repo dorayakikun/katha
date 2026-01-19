@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use tracing::{debug, trace};
@@ -68,8 +69,11 @@ impl App {
             let project_name = project.rsplit('/').next().unwrap_or(&project).to_string();
 
             // 全エントリを SessionListItem に変換
+            // history.jsonl is newest-first; keep only the latest entry per session.
+            let mut seen_session_ids = HashSet::new();
             let sessions: Vec<SessionListItem> = entries
                 .iter()
+                .filter(|entry| seen_session_ids.insert(entry.session_id.clone()))
                 .map(|entry| {
                     let datetime = entry.datetime();
                     let formatted_time = datetime.format("%Y-%m-%d %H:%M").to_string();
@@ -78,7 +82,7 @@ impl App {
                         session_id: entry.session_id.clone(),
                         project_name: project_name.clone(),
                         project_path: project.clone(),
-                        display: entry.display.clone(),
+                        latest_user_message: entry.display.clone(),
                         formatted_time,
                         datetime,
                     }

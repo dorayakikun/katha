@@ -47,10 +47,10 @@ pub fn render_preview_pane(frame: &mut Frame, area: Rect, model: &Model) {
 
         lines.push(Line::from(""));
 
-        // 最初のメッセージ
-        if let Some(first_msg) = &preview.first_message {
+        // 最新のユーザーメッセージ
+        if let Some(latest_msg) = &preview.latest_user_message {
             lines.push(Line::from(vec![Span::styled(
-                "First message:",
+                "Latest user message:",
                 Style::default()
                     .fg(Color::Gray)
                     .add_modifier(Modifier::ITALIC),
@@ -59,7 +59,7 @@ pub fn render_preview_pane(frame: &mut Frame, area: Rect, model: &Model) {
             lines.push(Line::from(""));
 
             // メッセージを複数行に分割
-            for line in first_msg.lines().take(10) {
+            for line in latest_msg.lines().take(10) {
                 lines.push(Line::from(Span::styled(
                     line.to_string(),
                     Style::default().fg(Color::White),
@@ -67,7 +67,7 @@ pub fn render_preview_pane(frame: &mut Frame, area: Rect, model: &Model) {
             }
 
             // メッセージが長い場合は省略記号を表示
-            let line_count = first_msg.lines().count();
+            let line_count = latest_msg.lines().count();
             if line_count > 10 {
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![Span::styled(

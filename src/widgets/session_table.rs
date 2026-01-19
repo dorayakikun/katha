@@ -149,14 +149,17 @@ impl SessionTable<'_> {
         let separator = " │ ";
         let used_width = time_width + separator.len() + project_width + separator.len();
         let display_width = width.saturating_sub(used_width);
-        let display = if session.display.len() > display_width {
+        let display = if session.latest_user_message.len() > display_width {
             if display_width > 1 {
-                format!("{}…", &session.display[..display_width - 1])
+                format!(
+                    "{}…",
+                    &session.latest_user_message[..display_width - 1]
+                )
             } else {
                 "…".to_string()
             }
         } else {
-            session.display.clone()
+            session.latest_user_message.clone()
         };
 
         Line::from(vec![
