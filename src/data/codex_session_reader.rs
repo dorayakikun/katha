@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::KathaError;
@@ -16,12 +15,34 @@ pub struct CodexSessionInfo {
     pub cwd: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 struct CodexSessionLine {
     pub timestamp: Option<String>,
-    #[serde(rename = "type")]
-    pub line_type: String,
+    pub line_type: Option<String>,
     pub payload: Value,
+}
+
+fn parse_codex_line(line: &str) -> Result<CodexSessionLine, serde_json::Error> {
+    let value: Value = serde_json::from_str(line)?;
+    let timestamp = value
+        .get("timestamp")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let mut line_type = value
+        .get("type")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let payload = value.get("payload").cloned().unwrap_or_else(|| value.clone());
+
+    if line_type.is_none() && payload.get("id").and_then(|v| v.as_str()).is_some() {
+        line_type = Some("session_meta".to_string());
+    }
+
+    Ok(CodexSessionLine {
+        timestamp,
+        line_type,
+        payload,
+    })
 }
 
 pub struct CodexSessionReader;
@@ -52,9 +73,9 @@ impl CodexSessionReader {
                 continue;
             }
 
-            match serde_json::from_str::<CodexSessionLine>(&line) {
+            match parse_codex_line(&line) {
                 Ok(line) => {
-                    if line.line_type != "session_meta" {
+                    if line.line_type.as_deref() != Some("session_meta") {
                         continue;
                     }
                     let session_id = line
@@ -117,7 +138,7 @@ impl CodexSessionReader {
                 continue;
             }
 
-            let parsed = match serde_json::from_str::<CodexSessionLine>(&line) {
+            let parsed = match parse_codex_line(&line) {
                 Ok(line) => line,
                 Err(e) => {
                     eprintln!(
@@ -130,7 +151,7 @@ impl CodexSessionReader {
                 }
             };
 
-            if parsed.line_type != "response_item" {
+            if parsed.line_type.as_deref() != Some("response_item") {
                 continue;
             }
 
