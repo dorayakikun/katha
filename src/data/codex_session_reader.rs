@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use tracing::warn;
 
 use crate::KathaError;
 use crate::domain::{ContentBlock, Message, MessageContent, Session, SessionEntry};
@@ -98,8 +99,8 @@ impl CodexSessionReader {
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Warning: Codex session meta line {} in {}: {}",
+                    warn!(
+                        "Codex session meta line {} in {}: {}",
                         line_num + 1,
                         path.display(),
                         e
@@ -141,8 +142,8 @@ impl CodexSessionReader {
             let parsed = match parse_codex_line(&line) {
                 Ok(line) => line,
                 Err(e) => {
-                    eprintln!(
-                        "Warning: Codex session line {} in {}: {}",
+                    warn!(
+                        "Codex session line {} in {}: {}",
                         line_num + 1,
                         path.as_ref().display(),
                         e
@@ -195,7 +196,7 @@ impl CodexSessionReader {
             };
 
             entries.push(SessionEntry {
-                entry_type: role.to_string(),
+                entry_type: Some(role.to_string()),
                 message: Some(message),
                 timestamp: parsed.timestamp.clone(),
                 ..Default::default()

@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use tracing::warn;
+
 use crate::KathaError;
 use crate::domain::HistoryEntry;
 
@@ -10,6 +12,7 @@ pub struct HistoryReader;
 
 impl HistoryReader {
     /// 全エントリを読み込み（新しい順）
+    /// 緩いスキーマでパースし、無効なエントリはスキップ
     pub fn read_all<P: AsRef<Path>>(path: P) -> Result<Vec<HistoryEntry>, KathaError> {
         let file = File::open(path.as_ref())?;
         let reader = BufReader::new(file);
@@ -22,21 +25,30 @@ impl HistoryReader {
             }
 
             match serde_json::from_str::<HistoryEntry>(&line) {
-                Ok(entry) => entries.push(entry),
+                Ok(entry) => {
+                    if entry.is_valid() {
+                        entries.push(entry);
+                    } else {
+                        warn!("Line {}: invalid entry (missing required fields)", line_num + 1);
+                    }
+                }
                 Err(e) => {
-                    eprintln!("Warning: Line {}: {}", line_num + 1, e);
+                    warn!("Line {}: {}", line_num + 1, e);
                 }
             }
         }
 
-        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        entries.sort_by(|a, b| b.datetime().cmp(&a.datetime()));
         Ok(entries)
     }
 
     /// ユニークセッション ID
     pub fn unique_session_ids<P: AsRef<Path>>(path: P) -> Result<Vec<String>, KathaError> {
         let entries = Self::read_all(path)?;
-        let mut ids: Vec<String> = entries.into_iter().map(|e| e.session_id).collect();
+        let mut ids: Vec<String> = entries
+            .into_iter()
+            .filter_map(|e| e.session_id)
+            .collect();
         ids.dedup();
         Ok(ids)
     }
@@ -50,7 +62,7 @@ impl HistoryReader {
 
         for entry in entries {
             grouped
-                .entry(entry.project.clone())
+                .entry(entry.project().to_string())
                 .or_insert_with(Vec::new)
                 .push(entry);
         }

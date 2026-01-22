@@ -36,8 +36,8 @@ pub struct SessionEntry {
     pub git_branch: Option<String>,
 
     /// エントリタイプ（"user" | "assistant" | etc）
-    #[serde(rename = "type")]
-    pub entry_type: String,
+    #[serde(rename = "type", default)]
+    pub entry_type: Option<String>,
 
     /// メッセージ本体
     #[serde(default)]
@@ -80,12 +80,12 @@ impl SessionEntry {
 
     /// ユーザーメッセージか
     pub fn is_user(&self) -> bool {
-        self.entry_type == "user" && !self.is_meta
+        self.entry_type.as_deref() == Some("user") && !self.is_meta
     }
 
     /// アシスタントメッセージか
     pub fn is_assistant(&self) -> bool {
-        self.entry_type == "assistant"
+        self.entry_type.as_deref() == Some("assistant")
     }
 
     /// 表示テキストを取得（全テキストブロックを結合）
@@ -183,7 +183,7 @@ mod tests {
             session_id: None,
             version: None,
             git_branch: None,
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             message: None,
             uuid: None,
             timestamp: Some("2025-12-27T03:47:49.992Z".to_string()),
@@ -200,14 +200,14 @@ mod tests {
     #[test]
     fn test_session_entry_is_user() {
         let user = SessionEntry {
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             is_meta: false,
             ..Default::default()
         };
         assert!(user.is_user());
 
         let meta = SessionEntry {
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             is_meta: true,
             ..Default::default()
         };
@@ -220,7 +220,7 @@ mod tests {
 
         // thinking のみのメッセージ
         let entry = SessionEntry {
-            entry_type: "assistant".to_string(),
+            entry_type: Some("assistant".to_string()),
             message: Some(Message {
                 role: "assistant".to_string(),
                 content: MessageContent::Blocks(vec![ContentBlock::Thinking {
@@ -241,7 +241,7 @@ mod tests {
         use crate::domain::message::{ContentBlock, Message, MessageContent};
 
         let entry = SessionEntry {
-            entry_type: "assistant".to_string(),
+            entry_type: Some("assistant".to_string()),
             message: Some(Message {
                 role: "assistant".to_string(),
                 content: MessageContent::Blocks(vec![
@@ -272,7 +272,7 @@ mod tests {
 
         // ツール呼び出しのみのメッセージ
         let entry = SessionEntry {
-            entry_type: "assistant".to_string(),
+            entry_type: Some("assistant".to_string()),
             message: Some(Message {
                 role: "assistant".to_string(),
                 content: MessageContent::Blocks(vec![ContentBlock::ToolUse {
@@ -294,7 +294,7 @@ mod tests {
     fn test_display_text_returns_none_for_no_message() {
         // メッセージなしのエントリ
         let entry = SessionEntry {
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             message: None,
             ..Default::default()
         };
@@ -308,7 +308,7 @@ mod tests {
 
         // テキスト + ツール呼び出しのメッセージ
         let entry = SessionEntry {
-            entry_type: "assistant".to_string(),
+            entry_type: Some("assistant".to_string()),
             message: Some(Message {
                 role: "assistant".to_string(),
                 content: MessageContent::Blocks(vec![
@@ -338,13 +338,13 @@ mod tests {
     fn test_session_from_entries() {
         let entries = vec![
             SessionEntry {
-                entry_type: "user".to_string(),
+                entry_type: Some("user".to_string()),
                 timestamp: Some("2025-01-01T00:00:00Z".to_string()),
                 slug: Some("test-slug".to_string()),
                 ..Default::default()
             },
             SessionEntry {
-                entry_type: "assistant".to_string(),
+                entry_type: Some("assistant".to_string()),
                 timestamp: Some("2025-01-01T00:01:00Z".to_string()),
                 ..Default::default()
             },

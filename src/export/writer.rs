@@ -136,7 +136,7 @@ mod tests {
 
     fn create_test_session() -> Session {
         let entries = vec![SessionEntry {
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             timestamp: Some("2025-01-01T10:00:00Z".to_string()),
             ..Default::default()
         }];
@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn test_generate_filename_with_special_chars() {
         let entries = vec![SessionEntry {
-            entry_type: "user".to_string(),
+            entry_type: Some("user".to_string()),
             timestamp: Some("2025-01-01T10:00:00Z".to_string()),
             ..Default::default()
         }];

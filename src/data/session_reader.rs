@@ -2,6 +2,8 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use tracing::warn;
+
 use crate::KathaError;
 use crate::config::ClaudePaths;
 use crate::domain::{Session, SessionEntry};
@@ -37,13 +39,18 @@ impl SessionReader {
 
             match serde_json::from_str::<SessionEntry>(&line) {
                 Ok(entry) => {
+                    // entry_type が None のエントリはスキップ
+                    if entry.entry_type.is_none() {
+                        warn!("Session line {}: missing type field", line_num + 1);
+                        continue;
+                    }
                     // file-history-snapshot はスキップ
-                    if entry.entry_type != "file-history-snapshot" {
+                    if entry.entry_type.as_deref() != Some("file-history-snapshot") {
                         entries.push(entry);
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Session line {}: {}", line_num + 1, e);
+                    warn!("Session line {}: {}", line_num + 1, e);
                 }
             }
         }

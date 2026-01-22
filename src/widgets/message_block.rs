@@ -151,7 +151,7 @@ mod tests {
 
     fn create_test_entry(entry_type: &str) -> SessionEntry {
         SessionEntry {
-            entry_type: entry_type.to_string(),
+            entry_type: Some(entry_type.to_string()),
             timestamp: Some("2025-01-01T12:00:00Z".to_string()),
             ..Default::default()
         }

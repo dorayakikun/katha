@@ -82,16 +82,20 @@ impl App {
         if paths.history_exists() {
             let entries = HistoryReader::read_all(&paths.history_file)?;
             for entry in entries {
-                history_items
-                    .entry(entry.project.clone())
-                    .or_insert_with(Vec::new)
-                    .push(HistoryItem {
-                        session_id: entry.session_id.clone(),
-                        project_path: entry.project.clone(),
-                        display: entry.display.clone(),
-                        timestamp: entry.timestamp,
-                        source: SessionSource::Claude,
-                    });
+                // is_valid() でフィルタ済みなので session_id は常に存在
+                if let Some(session_id) = entry.session_id.clone() {
+                    let project = entry.project().to_string();
+                    history_items
+                        .entry(project.clone())
+                        .or_insert_with(Vec::new)
+                        .push(HistoryItem {
+                            session_id,
+                            project_path: project,
+                            display: entry.display().to_string(),
+                            timestamp: entry.timestamp.unwrap_or(0),
+                            source: SessionSource::Claude,
+                        });
+                }
             }
         }
 
@@ -106,21 +110,24 @@ impl App {
             if codex_paths.history_exists() {
                 let entries = CodexHistoryReader::read_all(&codex_paths.history_file)?;
                 for entry in entries {
-                    let project_path = self
-                        .codex_sessions
-                        .get(&entry.session_id)
-                        .and_then(|info| info.cwd.clone())
-                        .unwrap_or_else(|| "Codex".to_string());
-                    history_items
-                        .entry(project_path.clone())
-                        .or_insert_with(Vec::new)
-                        .push(HistoryItem {
-                            session_id: entry.session_id.clone(),
-                            project_path,
-                            display: entry.text.clone(),
-                            timestamp: entry.ts * 1000,
-                            source: SessionSource::Codex,
-                        });
+                    // is_valid() でフィルタ済みなので session_id は常に存在
+                    if let Some(session_id) = entry.session_id.clone() {
+                        let project_path = self
+                            .codex_sessions
+                            .get(&session_id)
+                            .and_then(|info| info.cwd.clone())
+                            .unwrap_or_else(|| "Codex".to_string());
+                        history_items
+                            .entry(project_path.clone())
+                            .or_insert_with(Vec::new)
+                            .push(HistoryItem {
+                                session_id,
+                                project_path,
+                                display: entry.text().to_string(),
+                                timestamp: entry.ts() * 1000,
+                                source: SessionSource::Codex,
+                            });
+                    }
                 }
             }
 

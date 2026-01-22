@@ -18,37 +18,63 @@ pub struct PastedContent {
 }
 
 /// history.jsonl の各行を表すエントリ
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 緩いスキーマ設計：すべてのフィールドを Option にしてパースエラーを防ぐ
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
     /// ユーザー入力の表示テキスト
-    pub display: String,
+    #[serde(default)]
+    pub display: Option<String>,
 
     /// 貼り付けコンテンツ（通常は空）
     #[serde(default)]
     pub pasted_contents: HashMap<String, PastedContent>,
 
     /// ミリ秒単位 Unix タイムスタンプ
-    pub timestamp: i64,
+    #[serde(default)]
+    pub timestamp: Option<i64>,
 
     /// プロジェクトパス
-    pub project: String,
+    #[serde(default)]
+    pub project: Option<String>,
 
     /// セッション ID（UUID）
-    pub session_id: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 impl HistoryEntry {
+    /// エントリが有効かどうか（最低限必要なフィールドが存在するか）
+    pub fn is_valid(&self) -> bool {
+        self.session_id.is_some()
+    }
+
     /// タイムスタンプを DateTime<Utc> に変換
     pub fn datetime(&self) -> DateTime<Utc> {
-        Utc.timestamp_millis_opt(self.timestamp)
-            .single()
+        self.timestamp
+            .and_then(|ts| Utc.timestamp_millis_opt(ts).single())
             .unwrap_or(DateTime::UNIX_EPOCH)
+    }
+
+    /// プロジェクトパスを取得（デフォルト: "unknown"）
+    pub fn project(&self) -> &str {
+        self.project.as_deref().unwrap_or("unknown")
     }
 
     /// プロジェクト名（パスの最後の部分）
     pub fn project_name(&self) -> &str {
-        self.project.rsplit('/').next().unwrap_or(&self.project)
+        let project = self.project();
+        project.rsplit('/').next().unwrap_or(project)
+    }
+
+    /// 表示テキストを取得（デフォルト: ""）
+    pub fn display(&self) -> &str {
+        self.display.as_deref().unwrap_or("")
+    }
+
+    /// セッション ID を取得
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 }
 
@@ -60,11 +86,11 @@ mod tests {
     #[test]
     fn test_history_entry_datetime() {
         let entry = HistoryEntry {
-            display: "/init".to_string(),
+            display: Some("/init".to_string()),
             pasted_contents: HashMap::new(),
-            timestamp: 1735270066438, // 2024-12-27 頃
-            project: "/Users/test/project".to_string(),
-            session_id: "test-uuid".to_string(),
+            timestamp: Some(1735270066438), // 2024-12-27 頃
+            project: Some("/Users/test/project".to_string()),
+            session_id: Some("test-uuid".to_string()),
         };
 
         let dt = entry.datetime();
@@ -74,11 +100,11 @@ mod tests {
     #[test]
     fn test_project_name() {
         let entry = HistoryEntry {
-            display: "test".to_string(),
+            display: Some("test".to_string()),
             pasted_contents: HashMap::new(),
-            timestamp: 0,
-            project: "/Users/test/my-project".to_string(),
-            session_id: "test".to_string(),
+            timestamp: Some(0),
+            project: Some("/Users/test/my-project".to_string()),
+            session_id: Some("test".to_string()),
         };
 
         assert_eq!(entry.project_name(), "my-project");
@@ -95,8 +121,9 @@ mod tests {
         }"#;
 
         let entry: HistoryEntry = serde_json::from_str(json).unwrap();
-        assert_eq!(entry.display, "/init ");
-        assert_eq!(entry.session_id, "098d6872-8810-446c-af1f-64586872aa0e");
+        assert_eq!(entry.display(), "/init ");
+        assert_eq!(entry.session_id(), Some("098d6872-8810-446c-af1f-64586872aa0e"));
+        assert!(entry.is_valid());
     }
 
     #[test]
@@ -112,12 +139,50 @@ mod tests {
         }"#;
 
         let entry: HistoryEntry = serde_json::from_str(json).unwrap();
-        assert_eq!(entry.display, "/init ");
+        assert_eq!(entry.display(), "/init ");
         assert_eq!(entry.pasted_contents.len(), 1);
 
         let pasted = entry.pasted_contents.get("1").unwrap();
         assert_eq!(pasted.id, 1);
         assert_eq!(pasted.content_type, "text");
         assert_eq!(pasted.content, "Sample pasted content");
+    }
+
+    #[test]
+    fn test_deserialize_missing_session_id() {
+        // sessionId が欠落しているケース（緩いスキーマでパースは成功するが is_valid() は false）
+        let json = r#"{
+            "display": "/init ",
+            "pastedContents": {},
+            "timestamp": 1766807266438,
+            "project": "/Users/test/project"
+        }"#;
+
+        let entry: HistoryEntry = serde_json::from_str(json).unwrap();
+        assert!(!entry.is_valid());
+        assert_eq!(entry.session_id(), None);
+    }
+
+    #[test]
+    fn test_deserialize_minimal() {
+        // 最小限のフィールドのみ
+        let json = r#"{}"#;
+
+        let entry: HistoryEntry = serde_json::from_str(json).unwrap();
+        assert!(!entry.is_valid());
+        assert_eq!(entry.display(), "");
+        assert_eq!(entry.project(), "unknown");
+    }
+
+    #[test]
+    fn test_is_valid() {
+        let valid = HistoryEntry {
+            session_id: Some("test".to_string()),
+            ..Default::default()
+        };
+        assert!(valid.is_valid());
+
+        let invalid = HistoryEntry::default();
+        assert!(!invalid.is_valid());
     }
 }

@@ -80,7 +80,7 @@ mod tests {
     fn create_test_session() -> Session {
         let entries = vec![
             SessionEntry {
-                entry_type: "user".to_string(),
+                entry_type: Some("user".to_string()),
                 timestamp: Some("2025-01-01T10:00:00Z".to_string()),
                 message: Some(Message {
                     role: "user".to_string(),
@@ -93,7 +93,7 @@ mod tests {
                 ..Default::default()
             },
             SessionEntry {
-                entry_type: "assistant".to_string(),
+                entry_type: Some("assistant".to_string()),
                 timestamp: Some("2025-01-01T10:01:00Z".to_string()),
                 message: Some(Message {
                     role: "assistant".to_string(),
@@ -141,7 +141,7 @@ mod tests {
         // thinking のみのメッセージを含むセッション
         let entries = vec![
             SessionEntry {
-                entry_type: "user".to_string(),
+                entry_type: Some("user".to_string()),
                 timestamp: Some("2025-01-01T10:00:00Z".to_string()),
                 message: Some(Message {
                     role: "user".to_string(),
@@ -154,7 +154,7 @@ mod tests {
                 ..Default::default()
             },
             SessionEntry {
-                entry_type: "assistant".to_string(),
+                entry_type: Some("assistant".to_string()),
                 timestamp: Some("2025-01-01T10:01:00Z".to_string()),
                 message: Some(Message {
                     role: "assistant".to_string(),
