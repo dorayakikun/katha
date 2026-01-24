@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use tracing::warn;
+use tracing::debug;
 
 use crate::KathaError;
 use crate::domain::HistoryEntry;
@@ -29,11 +29,11 @@ impl HistoryReader {
                     if entry.is_valid() {
                         entries.push(entry);
                     } else {
-                        warn!("Line {}: invalid entry (missing required fields)", line_num + 1);
+                        debug!("Line {}: skipped entry (missing session_id)", line_num + 1);
                     }
                 }
                 Err(e) => {
-                    warn!("Line {}: {}", line_num + 1, e);
+                    debug!("Line {}: parse error: {}", line_num + 1, e);
                 }
             }
         }
