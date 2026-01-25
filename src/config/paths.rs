@@ -75,7 +75,7 @@ impl ClaudePaths {
 
     /// パスをエンコード
     pub fn encode_project_path(path: &str) -> String {
-        path.replace('/', "-").replace('.', "-")
+        path.replace('/', "-").replace('.', "-").replace('_', "-")
     }
 }
 
@@ -147,6 +147,14 @@ mod tests {
         assert_eq!(
             ClaudePaths::decode_project_path("-Users-test-project"),
             "/Users/test/project"
+        );
+    }
+
+    #[test]
+    fn test_encode_project_path_with_underscores() {
+        assert_eq!(
+            ClaudePaths::encode_project_path("/Users/test/ai_agent_status"),
+            "-Users-test-ai-agent-status"
         );
     }
 }
