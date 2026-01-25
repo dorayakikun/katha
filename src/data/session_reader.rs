@@ -62,7 +62,7 @@ impl SessionReader {
         projects_dir: P,
         project_path: &str,
     ) -> Result<Vec<PathBuf>, KathaError> {
-        let encoded = ClaudePaths::encode_project_path(project_path);
+        let encoded = ClaudePaths::encode_project_path_for_fs(project_path);
         let project_dir = projects_dir.as_ref().join(&encoded);
 
         if !project_dir.exists() {
@@ -86,7 +86,7 @@ impl SessionReader {
         project_path: &str,
         session_id: &str,
     ) -> PathBuf {
-        let encoded = ClaudePaths::encode_project_path(project_path);
+        let encoded = ClaudePaths::encode_project_path_for_fs(project_path);
         projects_dir
             .as_ref()
             .join(&encoded)
