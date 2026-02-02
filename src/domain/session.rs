@@ -181,6 +181,10 @@ impl Session {
                 summary.has_unknown = true;
                 continue;
             };
+            if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
+                summary.has_unknown = true;
+                continue;
+            }
 
             summary.has_data = true;
             let input = usage.total_input_tokens();
@@ -206,6 +210,10 @@ impl Session {
                 summary.has_unknown = true;
                 continue;
             };
+            if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
+                summary.has_unknown = true;
+                continue;
+            }
 
             summary.has_data = true;
             let Some(model) = message.model.as_deref() else {

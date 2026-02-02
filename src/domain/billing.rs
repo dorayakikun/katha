@@ -47,7 +47,7 @@ impl Currency {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CostRate {
     pub input_per_million: f64,
     pub output_per_million: f64,
@@ -62,8 +62,8 @@ pub fn cost_rate_for_model(model: &str) -> Option<CostRate> {
         || model.contains("opus-4")
     {
         return Some(CostRate {
-            input_per_million: 15.0,
-            output_per_million: 75.0,
+            input_per_million: 5.0,
+            output_per_million: 25.0,
         });
     }
     // Claude 3.x
@@ -94,8 +94,8 @@ pub fn cost_rate_for_model(model: &str) -> Option<CostRate> {
     // Codex / GPT-5.x
     if model.contains("gpt-5.2") || model.contains("gpt-5-2") || model.contains("gpt-5") {
         return Some(CostRate {
-            input_per_million: 5.0,
-            output_per_million: 15.0,
+            input_per_million: 1.75,
+            output_per_million: 14.0,
         });
     }
     None
@@ -123,4 +123,97 @@ pub fn format_tokens(count: u64) -> String {
     }
 
     result.chars().rev().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cost_rate_for_model_variants() {
+        let cases = [
+            (
+                "claude-4-5-opus",
+                CostRate {
+                    input_per_million: 5.0,
+                    output_per_million: 25.0,
+                },
+            ),
+            (
+                "claude-4-opus",
+                CostRate {
+                    input_per_million: 5.0,
+                    output_per_million: 25.0,
+                },
+            ),
+            (
+                "gpt-5.2",
+                CostRate {
+                    input_per_million: 1.75,
+                    output_per_million: 14.0,
+                },
+            ),
+            (
+                "gpt-5-2",
+                CostRate {
+                    input_per_million: 1.75,
+                    output_per_million: 14.0,
+                },
+            ),
+            (
+                "gpt-5",
+                CostRate {
+                    input_per_million: 1.75,
+                    output_per_million: 14.0,
+                },
+            ),
+            (
+                "claude-3-5-sonnet",
+                CostRate {
+                    input_per_million: 3.0,
+                    output_per_million: 15.0,
+                },
+            ),
+            (
+                "claude-3-7-sonnet",
+                CostRate {
+                    input_per_million: 3.0,
+                    output_per_million: 15.0,
+                },
+            ),
+            (
+                "claude-3-5-haiku",
+                CostRate {
+                    input_per_million: 0.25,
+                    output_per_million: 1.25,
+                },
+            ),
+            (
+                "claude-3-haiku",
+                CostRate {
+                    input_per_million: 0.25,
+                    output_per_million: 1.25,
+                },
+            ),
+            (
+                "claude-3-opus",
+                CostRate {
+                    input_per_million: 15.0,
+                    output_per_million: 75.0,
+                },
+            ),
+            (
+                "claude-3-sonnet",
+                CostRate {
+                    input_per_million: 3.0,
+                    output_per_million: 15.0,
+                },
+            ),
+        ];
+
+        for (model, expected) in cases {
+            let actual = cost_rate_for_model(model);
+            assert_eq!(actual, Some(expected));
+        }
+    }
 }

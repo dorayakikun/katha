@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::domain::SessionEntry;
 use crate::domain::billing::{Currency, estimate_cost_usd, format_tokens};
+use unicode_width::UnicodeWidthStr;
 
 /// メッセージブロックのスタイル定義
 pub struct MessageStyles;
@@ -106,9 +107,10 @@ impl<'a> MessageBlock<'a> {
             timestamp
         };
 
+        let meta_width = UnicodeWidthStr::width(meta.as_str()) as u16;
         let separator_len = self
             .width
-            .saturating_sub(role_label.len() as u16 + 4 + meta.len() as u16);
+            .saturating_sub(role_label.len() as u16 + 4 + meta_width);
 
         Line::from(vec![
             Span::styled(format!("── {} ", role_label), role_style),
