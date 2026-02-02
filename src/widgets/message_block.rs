@@ -147,6 +147,9 @@ impl<'a> MessageBlock<'a> {
     fn usage_text(&self) -> Option<String> {
         let message = self.entry.message.as_ref()?;
         let usage = message.usage.as_ref()?;
+        if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
+            return None;
+        }
         let total_tokens = usage.total_tokens();
         let tokens_text = format!("{} tok", format_tokens(total_tokens));
 

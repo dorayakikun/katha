@@ -92,10 +92,40 @@ pub fn cost_rate_for_model(model: &str) -> Option<CostRate> {
         });
     }
     // Codex / GPT-5.x
-    if model.contains("gpt-5.2") || model.contains("gpt-5-2") || model.contains("gpt-5") {
+    if model.contains("gpt-5.2-pro") {
+        return Some(CostRate {
+            input_per_million: 21.0,
+            output_per_million: 168.0,
+        });
+    }
+    if model.contains("gpt-5-pro") {
+        return Some(CostRate {
+            input_per_million: 15.0,
+            output_per_million: 120.0,
+        });
+    }
+    if model.contains("gpt-5.2") || model.contains("gpt-5-2") {
         return Some(CostRate {
             input_per_million: 1.75,
             output_per_million: 14.0,
+        });
+    }
+    if model.contains("gpt-5-mini") {
+        return Some(CostRate {
+            input_per_million: 0.25,
+            output_per_million: 2.0,
+        });
+    }
+    if model.contains("gpt-5-nano") {
+        return Some(CostRate {
+            input_per_million: 0.05,
+            output_per_million: 0.4,
+        });
+    }
+    if model.contains("gpt-5") {
+        return Some(CostRate {
+            input_per_million: 1.25,
+            output_per_million: 10.0,
         });
     }
     None
@@ -147,6 +177,20 @@ mod tests {
                 },
             ),
             (
+                "gpt-5.2-pro",
+                CostRate {
+                    input_per_million: 21.0,
+                    output_per_million: 168.0,
+                },
+            ),
+            (
+                "gpt-5-pro",
+                CostRate {
+                    input_per_million: 15.0,
+                    output_per_million: 120.0,
+                },
+            ),
+            (
                 "gpt-5.2",
                 CostRate {
                     input_per_million: 1.75,
@@ -163,8 +207,22 @@ mod tests {
             (
                 "gpt-5",
                 CostRate {
-                    input_per_million: 1.75,
-                    output_per_million: 14.0,
+                    input_per_million: 1.25,
+                    output_per_million: 10.0,
+                },
+            ),
+            (
+                "gpt-5-mini",
+                CostRate {
+                    input_per_million: 0.25,
+                    output_per_million: 2.0,
+                },
+            ),
+            (
+                "gpt-5-nano",
+                CostRate {
+                    input_per_million: 0.05,
+                    output_per_million: 0.4,
                 },
             ),
             (
