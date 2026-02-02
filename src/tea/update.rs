@@ -59,6 +59,9 @@ pub fn update(model: &mut Model, msg: Message) {
         }
         Message::CopySelectedMessage => {}
         Message::CopySelectedMessageWithMeta => {}
+        Message::ToggleCurrency => {
+            model.currency = model.currency.toggle();
+        }
         Message::SessionLoaded(session) => {
             model.current_session = Some(session);
             model.reset_detail_cursor();

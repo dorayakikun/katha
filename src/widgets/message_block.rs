@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::domain::SessionEntry;
+use crate::domain::billing::{Currency, estimate_cost_usd, format_tokens};
 
 /// メッセージブロックのスタイル定義
 pub struct MessageStyles;
@@ -46,12 +47,17 @@ impl MessageStyles {
 pub struct MessageBlock<'a> {
     entry: &'a SessionEntry,
     width: u16,
+    currency: Currency,
 }
 
 impl<'a> MessageBlock<'a> {
     /// 新規作成
-    pub fn new(entry: &'a SessionEntry, width: u16) -> Self {
-        Self { entry, width }
+    pub fn new(entry: &'a SessionEntry, width: u16, currency: Currency) -> Self {
+        Self {
+            entry,
+            width,
+            currency,
+        }
     }
 
     /// メッセージをレンダリング用の行に変換
@@ -93,9 +99,16 @@ impl<'a> MessageBlock<'a> {
             .map(|dt| dt.format(" %H:%M:%S").to_string())
             .unwrap_or_default();
 
+        let usage_text = self.usage_text();
+        let meta = if let Some(usage_text) = usage_text {
+            format!("{timestamp} {usage_text}")
+        } else {
+            timestamp
+        };
+
         let separator_len = self
             .width
-            .saturating_sub(role_label.len() as u16 + 4 + timestamp.len() as u16);
+            .saturating_sub(role_label.len() as u16 + 4 + meta.len() as u16);
 
         Line::from(vec![
             Span::styled(format!("── {} ", role_label), role_style),
@@ -103,7 +116,7 @@ impl<'a> MessageBlock<'a> {
                 "─".repeat(separator_len as usize),
                 MessageStyles::separator(),
             ),
-            Span::styled(timestamp, MessageStyles::timestamp()),
+            Span::styled(meta, MessageStyles::timestamp()),
         ])
     }
 
@@ -127,6 +140,22 @@ impl<'a> MessageBlock<'a> {
         }
 
         Some(lines)
+    }
+
+    fn usage_text(&self) -> Option<String> {
+        let message = self.entry.message.as_ref()?;
+        let usage = message.usage.as_ref()?;
+        let total_tokens = usage.total_tokens();
+        let tokens_text = format!("{} tok", format_tokens(total_tokens));
+
+        let cost_text = message
+            .model
+            .as_deref()
+            .and_then(|model| estimate_cost_usd(model, usage))
+            .map(|usd| self.currency.format_cost(usd))
+            .unwrap_or_else(|| "n/a".to_string());
+
+        Some(format!("{tokens_text} | {cost_text}"))
     }
 }
 
@@ -169,7 +198,7 @@ mod tests {
     #[test]
     fn test_message_block_user() {
         let entry = create_test_entry("user");
-        let block = MessageBlock::new(&entry, 80);
+        let block = MessageBlock::new(&entry, 80, Currency::Usd);
         let lines = block.to_lines();
 
         assert!(!lines.is_empty());
@@ -178,7 +207,7 @@ mod tests {
     #[test]
     fn test_message_block_assistant() {
         let entry = create_test_entry("assistant");
-        let block = MessageBlock::new(&entry, 80);
+        let block = MessageBlock::new(&entry, 80, Currency::Usd);
         let lines = block.to_lines();
 
         assert!(!lines.is_empty());

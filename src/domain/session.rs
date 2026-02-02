@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::billing::{CostSummary, UsageSummary, estimate_cost_usd};
 use super::message::Message;
 
 /// セッションファイルの各行
@@ -165,6 +166,61 @@ impl Session {
             .iter()
             .filter(|e| e.is_user() || e.is_assistant())
             .count()
+    }
+
+    /// セッショントークン使用量の集計
+    pub fn usage_summary(&self) -> UsageSummary {
+        let mut summary = UsageSummary::default();
+
+        for entry in self.entries.iter().filter(|e| e.is_assistant()) {
+            let Some(message) = entry.message.as_ref() else {
+                summary.has_unknown = true;
+                continue;
+            };
+            let Some(usage) = message.usage.as_ref() else {
+                summary.has_unknown = true;
+                continue;
+            };
+
+            summary.has_data = true;
+            let input = usage.total_input_tokens();
+            let output = usage.total_output_tokens();
+            summary.input_tokens += input;
+            summary.output_tokens += output;
+            summary.total_tokens += input + output;
+        }
+
+        summary
+    }
+
+    /// セッションコスト（USD）の集計
+    pub fn cost_summary(&self) -> CostSummary {
+        let mut summary = CostSummary::default();
+
+        for entry in self.entries.iter().filter(|e| e.is_assistant()) {
+            let Some(message) = entry.message.as_ref() else {
+                summary.has_unknown = true;
+                continue;
+            };
+            let Some(usage) = message.usage.as_ref() else {
+                summary.has_unknown = true;
+                continue;
+            };
+
+            summary.has_data = true;
+            let Some(model) = message.model.as_deref() else {
+                summary.has_unknown = true;
+                continue;
+            };
+
+            if let Some(cost) = estimate_cost_usd(model, usage) {
+                summary.usd += cost;
+            } else {
+                summary.has_unknown = true;
+            }
+        }
+
+        summary
     }
 }
 
