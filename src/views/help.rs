@@ -23,6 +23,7 @@ const KEYBINDINGS: &[(&str, &str, &str)] = &[
     // Detail actions
     ("y", "Copy message", "Detail"),
     ("Y", "Copy message with meta", "Detail"),
+    ("u", "Toggle currency", "List/Detail"),
     // Export
     ("e", "Export session", "List/Detail"),
     // Other

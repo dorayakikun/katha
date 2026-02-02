@@ -115,6 +115,8 @@ impl EventHandler {
             KeyCode::Char('f') => Message::StartFilter,
             // エクスポートダイアログ表示
             KeyCode::Char('e') => Message::StartExport,
+            // 通貨切り替え
+            KeyCode::Char('u') => Message::ToggleCurrency,
             // ヘルプ表示
             KeyCode::Char('?') => Message::ShowHelp,
             _ => Message::None,
@@ -142,6 +144,8 @@ impl EventHandler {
             KeyCode::Char('Y') => Message::CopySelectedMessageWithMeta,
             // エクスポートダイアログ表示
             KeyCode::Char('e') => Message::StartExport,
+            // 通貨切り替え
+            KeyCode::Char('u') => Message::ToggleCurrency,
             // ヘルプ表示
             KeyCode::Char('?') => Message::ShowHelp,
             _ => Message::None,

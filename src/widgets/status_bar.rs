@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Widget},
 };
 
+use crate::domain::Currency;
 use crate::tea::{Model, ViewMode};
 
 /// ステータスバーウィジェット
@@ -18,6 +19,7 @@ pub struct StatusBar<'a> {
     search_query: Option<&'a str>,
     project_filter: Option<&'a str>,
     error_message: Option<&'a str>,
+    currency: Currency,
 }
 
 impl<'a> StatusBar<'a> {
@@ -39,6 +41,7 @@ impl<'a> StatusBar<'a> {
             search_query,
             project_filter,
             error_message: model.error_message.as_deref(),
+            currency: model.currency,
         }
     }
 
@@ -111,6 +114,14 @@ impl Widget for StatusBar<'_> {
             spans.push(Span::styled(
                 format!("Error: {}", error),
                 Style::default().fg(Color::Red),
+            ));
+        }
+
+        if self.view_mode == ViewMode::SessionDetail {
+            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                format!("Currency: {}", self.currency.label()),
+                Style::default().fg(Color::DarkGray),
             ));
         }
 

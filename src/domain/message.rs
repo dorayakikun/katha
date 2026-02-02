@@ -87,6 +87,22 @@ pub struct Usage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
+impl Usage {
+    pub fn total_input_tokens(&self) -> u64 {
+        self.input_tokens.unwrap_or(0)
+            + self.cache_creation_input_tokens.unwrap_or(0)
+            + self.cache_read_input_tokens.unwrap_or(0)
+    }
+
+    pub fn total_output_tokens(&self) -> u64 {
+        self.output_tokens.unwrap_or(0)
+    }
+
+    pub fn total_tokens(&self) -> u64 {
+        self.total_input_tokens() + self.total_output_tokens()
+    }
+}
+
 impl Message {
     /// 最初のテキストコンテンツを取得
     pub fn text_content(&self) -> Option<String> {

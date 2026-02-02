@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
+use crate::domain::billing::format_tokens;
 use crate::tea::Model;
 use crate::widgets::{LineHighlight, MessageBlock, StatusBar};
 
@@ -30,25 +31,75 @@ pub fn render_session_detail(frame: &mut Frame, model: &Model) {
 fn render_header(frame: &mut Frame, area: Rect, model: &Model) {
     let title = if let Some(session) = &model.current_session {
         let message_count = session.message_count();
-        Line::from(vec![
-            Span::styled(
-                " katha ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("- ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                session.project_name(),
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(" ({} messages)", message_count),
+        let usage_summary = session.usage_summary();
+        let cost_summary = session.cost_summary();
+        let tokens_summary = if usage_summary.has_data {
+            let suffix = if usage_summary.has_unknown { "+" } else { "" };
+            Some(format!(
+                "Tokens: {}{}",
+                format_tokens(usage_summary.total_tokens),
+                suffix
+            ))
+        } else {
+            None
+        };
+        let cost_summary_text = if cost_summary.has_data {
+            if cost_summary.usd == 0.0 && cost_summary.has_unknown {
+                Some("Cost: n/a".to_string())
+            } else {
+                let suffix = if cost_summary.has_unknown { "+" } else { "" };
+                Some(format!(
+                    "Cost: {}{}",
+                    model.currency.format_cost(cost_summary.usd),
+                    suffix
+                ))
+            }
+        } else {
+            None
+        };
+
+        let mut meta_spans = Vec::new();
+        if let Some(tokens_summary) = tokens_summary {
+            meta_spans.push(Span::styled(
+                format!(" | {tokens_summary}"),
                 Style::default().fg(Color::DarkGray),
-            ),
-        ])
+            ));
+        }
+        if let Some(cost_summary_text) = cost_summary_text {
+            meta_spans.push(Span::styled(
+                format!(" | {cost_summary_text}"),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        meta_spans.push(Span::styled(
+            format!(" | {}", model.currency.label()),
+            Style::default().fg(Color::DarkGray),
+        ));
+
+        Line::from(
+            vec![
+                Span::styled(
+                    " katha ",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("- ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    session.project_name(),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" ({} messages)", message_count),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]
+            .into_iter()
+            .chain(meta_spans)
+            .collect::<Vec<_>>(),
+        )
     } else if let Some(selected) = model.selected_session() {
         Line::from(vec![
             Span::styled(
@@ -108,7 +159,7 @@ fn render_content(frame: &mut Frame, area: Rect, model: &Model) {
         let mut lines: Vec<Line> = Vec::new();
 
         for entry in messages.iter() {
-            let message_block = MessageBlock::new(*entry, inner_width);
+            let message_block = MessageBlock::new(*entry, inner_width, model.currency);
             let block_lines = message_block.to_lines();
             lines.extend(block_lines);
         }
@@ -182,6 +233,7 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
             ("k/↑", "Up"),
             ("y", "Copy"),
             ("Y", "Copy+Meta"),
+            ("u", "Currency"),
             ("e", "Export"),
             ("?", "Help"),
         ];

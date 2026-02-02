@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::{Session, SessionEntry};
+use crate::domain::{Currency, Session, SessionEntry};
 use crate::export::ExportFormat;
 use crate::search::{FilterCriteria, FilterField, SearchQuery};
 use crate::widgets::MessageBlock;
@@ -227,6 +227,8 @@ pub struct Model {
     pub expanded_projects_before_filter: Option<HashSet<String>>,
     /// ツリー表示用アイテム一覧
     pub tree_items: Vec<TreeItem>,
+    /// コスト表示通貨
+    pub currency: Currency,
 }
 
 struct DetailLayout {
@@ -270,6 +272,7 @@ impl Model {
             expanded_projects: HashSet::new(),
             expanded_projects_before_filter: None,
             tree_items: Vec::new(),
+            currency: Currency::Usd,
         }
     }
 
@@ -330,10 +333,7 @@ impl Model {
 
     /// 総セッション数を取得
     pub fn total_session_count(&self) -> usize {
-        self.project_groups
-            .iter()
-            .map(|g| g.sessions.len())
-            .sum()
+        self.project_groups.iter().map(|g| g.sessions.len()).sum()
     }
 
     /// プロジェクトの展開/折りたたみを切り替え
@@ -367,11 +367,9 @@ impl Model {
                 // セッションノードの場合は親プロジェクトに移動してから折りたたみ
                 if item.kind == TreeNodeKind::Session {
                     // 親プロジェクトを探す
-                    if let Some(project_index) = self
-                        .tree_items
-                        .iter()
-                        .position(|t| t.kind == TreeNodeKind::Project && t.project_path == project_path)
-                    {
+                    if let Some(project_index) = self.tree_items.iter().position(|t| {
+                        t.kind == TreeNodeKind::Project && t.project_path == project_path
+                    }) {
                         self.selected_index = project_index;
                     }
                 }
@@ -398,7 +396,11 @@ impl Model {
             let project_path = item.project_path.clone();
             self.rebuild_tree_items();
             // 同じプロジェクトを選択
-            if let Some(idx) = self.tree_items.iter().position(|t| t.project_path == project_path) {
+            if let Some(idx) = self
+                .tree_items
+                .iter()
+                .position(|t| t.project_path == project_path)
+            {
                 self.selected_index = idx;
             } else {
                 self.selected_index = 0;
@@ -600,7 +602,9 @@ impl Model {
         session
             .entries
             .iter()
-            .filter(|entry| (entry.is_user() || entry.is_assistant()) && entry.display_text().is_some())
+            .filter(|entry| {
+                (entry.is_user() || entry.is_assistant()) && entry.display_text().is_some()
+            })
             .collect()
     }
 
@@ -614,7 +618,7 @@ impl Model {
         let mut total_lines = 0usize;
 
         for entry in entries {
-            let block = MessageBlock::new(entry, width as u16);
+            let block = MessageBlock::new(entry, width as u16, self.currency);
             let lines = block.to_lines();
             let mut line_count = 0usize;
             for line in lines {
@@ -663,7 +667,9 @@ impl Model {
     }
 
     pub fn detail_total_lines(&self) -> usize {
-        self.detail_layout().map(|layout| layout.total_lines).unwrap_or(0)
+        self.detail_layout()
+            .map(|layout| layout.total_lines)
+            .unwrap_or(0)
     }
 
     pub fn move_detail_cursor_up(&mut self, amount: usize) {
