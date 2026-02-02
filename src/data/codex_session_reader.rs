@@ -7,6 +7,7 @@ use serde_json::Value;
 use tracing::warn;
 
 use crate::KathaError;
+use crate::domain::message::Usage;
 use crate::domain::{ContentBlock, Message, MessageContent, Session, SessionEntry};
 
 #[derive(Debug, Clone)]
@@ -33,7 +34,10 @@ fn parse_codex_line(line: &str) -> Result<CodexSessionLine, serde_json::Error> {
         .get("type")
         .and_then(|v| v.as_str())
         .map(str::to_string);
-    let payload = value.get("payload").cloned().unwrap_or_else(|| value.clone());
+    let payload = value
+        .get("payload")
+        .cloned()
+        .unwrap_or_else(|| value.clone());
 
     if line_type.is_none() && payload.get("id").and_then(|v| v.as_str()).is_some() {
         line_type = Some("session_meta".to_string());
@@ -186,13 +190,20 @@ impl CodexSessionReader {
                 continue;
             }
 
+            let model = parsed
+                .payload
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let usage = parse_usage(&parsed.payload);
+
             let message = Message {
                 role: role.to_string(),
                 content: MessageContent::Blocks(blocks),
-                model: None,
+                model,
                 id: None,
                 stop_reason: None,
-                usage: None,
+                usage,
             };
 
             entries.push(SessionEntry {
@@ -205,6 +216,39 @@ impl CodexSessionReader {
 
         Ok(entries)
     }
+}
+
+fn parse_usage(payload: &Value) -> Option<Usage> {
+    let usage = payload.get("usage")?;
+    let input_tokens = usage
+        .get("input_tokens")
+        .and_then(|v| v.as_u64())
+        .or_else(|| usage.get("prompt_tokens").and_then(|v| v.as_u64()));
+    let output_tokens = usage
+        .get("output_tokens")
+        .and_then(|v| v.as_u64())
+        .or_else(|| usage.get("completion_tokens").and_then(|v| v.as_u64()));
+    let cache_creation_input_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_u64());
+    let cache_read_input_tokens = usage
+        .get("cache_read_input_tokens")
+        .and_then(|v| v.as_u64());
+
+    if input_tokens.is_none()
+        && output_tokens.is_none()
+        && cache_creation_input_tokens.is_none()
+        && cache_read_input_tokens.is_none()
+    {
+        return None;
+    }
+
+    Some(Usage {
+        input_tokens,
+        output_tokens,
+        cache_creation_input_tokens,
+        cache_read_input_tokens,
+    })
 }
 
 fn collect_jsonl_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), KathaError> {
