@@ -98,6 +98,12 @@ pub fn cost_rate_for_model(model: &str) -> Option<CostRate> {
             output_per_million: 168.0,
         });
     }
+    if model.contains("gpt-5-2-pro") {
+        return Some(CostRate {
+            input_per_million: 21.0,
+            output_per_million: 168.0,
+        });
+    }
     if model.contains("gpt-5-pro") {
         return Some(CostRate {
             input_per_million: 15.0,
@@ -178,6 +184,13 @@ mod tests {
             ),
             (
                 "gpt-5.2-pro",
+                CostRate {
+                    input_per_million: 21.0,
+                    output_per_million: 168.0,
+                },
+            ),
+            (
+                "gpt-5-2-pro",
                 CostRate {
                     input_per_million: 21.0,
                     output_per_million: 168.0,
