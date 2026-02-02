@@ -181,7 +181,11 @@ impl Session {
                 summary.has_unknown = true;
                 continue;
             };
-            if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
+            let has_any = usage.input_tokens.is_some()
+                || usage.output_tokens.is_some()
+                || usage.cache_creation_input_tokens.is_some()
+                || usage.cache_read_input_tokens.is_some();
+            if !has_any {
                 summary.has_unknown = true;
                 continue;
             }
@@ -210,7 +214,11 @@ impl Session {
                 summary.has_unknown = true;
                 continue;
             };
-            if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
+            let has_any = usage.input_tokens.is_some()
+                || usage.output_tokens.is_some()
+                || usage.cache_creation_input_tokens.is_some()
+                || usage.cache_read_input_tokens.is_some();
+            if !has_any {
                 summary.has_unknown = true;
                 continue;
             }

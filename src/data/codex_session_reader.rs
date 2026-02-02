@@ -135,7 +135,9 @@ impl CodexSessionReader {
     pub fn read_entries<P: AsRef<Path>>(path: P) -> Result<Vec<SessionEntry>, KathaError> {
         let file = File::open(path.as_ref())?;
         let reader = BufReader::new(file);
-        let mut entries = Vec::new();
+        let mut entries: Vec<SessionEntry> = Vec::new();
+        let mut last_assistant_index: Option<usize> = None;
+        let mut last_model: Option<String> = None;
 
         for (line_num, line) in reader.lines().enumerate() {
             let line = line?;
@@ -155,6 +157,30 @@ impl CodexSessionReader {
                     continue;
                 }
             };
+
+            if parsed.line_type.as_deref() == Some("event_msg") {
+                if let Some(usage) = parse_token_count_usage(&parsed.payload) {
+                    if let Some(idx) = last_assistant_index {
+                        if let Some(entry) = entries.get_mut(idx) {
+                            if let Some(message) = entry.message.as_mut() {
+                                if message.usage.is_none() {
+                                    message.usage = Some(usage);
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if parsed.line_type.as_deref() == Some("turn_context") {
+                last_model = parsed
+                    .payload
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                continue;
+            }
 
             if parsed.line_type.as_deref() != Some("response_item") {
                 continue;
@@ -190,11 +216,14 @@ impl CodexSessionReader {
                 continue;
             }
 
-            let model = parsed
+            let mut model = parsed
                 .payload
                 .get("model")
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
+            if model.is_none() {
+                model = last_model.clone();
+            }
             let usage = parse_usage(&parsed.payload);
 
             let message = Message {
@@ -212,8 +241,13 @@ impl CodexSessionReader {
                 timestamp: parsed.timestamp.clone(),
                 ..Default::default()
             });
+
+            if role == "assistant" {
+                last_assistant_index = Some(entries.len() - 1);
+            }
         }
 
+        backfill_assistant_models(&mut entries);
         Ok(entries)
     }
 }
@@ -249,6 +283,58 @@ fn parse_usage(payload: &Value) -> Option<Usage> {
         cache_creation_input_tokens,
         cache_read_input_tokens,
     })
+}
+
+fn parse_token_count_usage(payload: &Value) -> Option<Usage> {
+    if payload.get("type").and_then(|v| v.as_str()) != Some("token_count") {
+        return None;
+    }
+    let info = payload.get("info")?;
+    let last = info.get("last_token_usage")?;
+    let input_tokens = last.get("input_tokens").and_then(|v| v.as_u64());
+    let output_tokens = last.get("output_tokens").and_then(|v| v.as_u64());
+    let cached_input_tokens = last.get("cached_input_tokens").and_then(|v| v.as_u64());
+
+    if input_tokens.is_none() && output_tokens.is_none() && cached_input_tokens.is_none() {
+        return None;
+    }
+
+    Some(Usage {
+        input_tokens,
+        output_tokens,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: cached_input_tokens,
+    })
+}
+
+fn backfill_assistant_models(entries: &mut [SessionEntry]) {
+    // Forward fill with the last seen assistant model.
+    let mut last_model: Option<String> = None;
+    for entry in entries.iter_mut() {
+        let Some(message) = entry.message.as_mut() else { continue };
+        if message.role != "assistant" {
+            continue;
+        }
+        if let Some(model) = message.model.clone() {
+            last_model = Some(model);
+        } else if let Some(model) = last_model.clone() {
+            message.model = Some(model);
+        }
+    }
+
+    // Backward fill any remaining gaps using the next seen model.
+    let mut next_model: Option<String> = None;
+    for entry in entries.iter_mut().rev() {
+        let Some(message) = entry.message.as_mut() else { continue };
+        if message.role != "assistant" {
+            continue;
+        }
+        if let Some(model) = message.model.clone() {
+            next_model = Some(model);
+        } else if let Some(model) = next_model.clone() {
+            message.model = Some(model);
+        }
+    }
 }
 
 fn collect_jsonl_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), KathaError> {
