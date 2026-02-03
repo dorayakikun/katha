@@ -6,6 +6,7 @@ pub mod export;
 pub mod layout;
 pub mod search;
 pub mod tea;
+pub mod theme;
 pub mod tui;
 pub mod views;
 pub mod widgets;

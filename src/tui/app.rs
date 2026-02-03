@@ -16,6 +16,7 @@ use crate::tea::{
     ExportStatus, Message, Model, ProjectGroup, SessionListItem, SessionSource, TreeNodeKind,
     ViewMode, update,
 };
+use crate::theme::Theme;
 use crate::tui::{EventHandler, Terminal};
 use crate::views::{render_export_dialog, render_help, render_session_detail, render_session_list};
 
@@ -59,7 +60,8 @@ impl App {
     pub fn new() -> Result<Self, KathaError> {
         let terminal = Terminal::new()?;
         let event_handler = EventHandler::new();
-        let model = Model::new();
+        let mut model = Model::new();
+        model.theme = Theme::from_env();
         let (async_tx, async_rx) = mpsc::channel();
 
         Ok(Self {

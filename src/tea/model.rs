@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use crate::domain::{Currency, Session, SessionEntry};
 use crate::export::ExportFormat;
 use crate::search::{FilterCriteria, FilterField, SearchQuery};
+use crate::theme::Theme;
 use crate::widgets::MessageBlock;
 
 /// ツリーノードの種類
@@ -229,6 +230,8 @@ pub struct Model {
     pub tree_items: Vec<TreeItem>,
     /// コスト表示通貨
     pub currency: Currency,
+    /// テーマ
+    pub theme: Theme,
 }
 
 struct DetailLayout {
@@ -273,6 +276,7 @@ impl Model {
             expanded_projects_before_filter: None,
             tree_items: Vec::new(),
             currency: Currency::Usd,
+            theme: Theme::default(),
         }
     }
 
@@ -618,7 +622,7 @@ impl Model {
         let mut total_lines = 0usize;
 
         for entry in entries {
-            let block = MessageBlock::new(entry, width as u16, self.currency);
+            let block = MessageBlock::new(entry, width as u16, self.currency, self.theme);
             let lines = block.to_lines();
             let mut line_count = 0usize;
             for line in lines {

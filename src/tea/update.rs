@@ -62,6 +62,9 @@ pub fn update(model: &mut Model, msg: Message) {
         Message::ToggleCurrency => {
             model.currency = model.currency.toggle();
         }
+        Message::ToggleTheme => {
+            model.theme = model.theme.toggle();
+        }
         Message::SessionLoaded(session) => {
             model.current_session = Some(session);
             model.reset_detail_cursor();

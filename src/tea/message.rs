@@ -29,6 +29,8 @@ pub enum Message {
     CopySelectedMessageWithMeta,
     /// コスト表示通貨を切り替え
     ToggleCurrency,
+    /// テーマを切り替え
+    ToggleTheme,
     /// セッション読み込み完了
     SessionLoaded(Session),
     /// セッション読み込みエラー

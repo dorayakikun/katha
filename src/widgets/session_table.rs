@@ -1,12 +1,13 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, StatefulWidget, Widget},
 };
 
 use crate::tea::{SessionListItem, SessionSource};
+use crate::theme::Theme;
 
 /// セッションテーブルの状態
 #[derive(Debug, Default)]
@@ -39,18 +40,23 @@ pub struct SessionTable<'a> {
     style: Style,
     /// 選択行のスタイル
     highlight_style: Style,
+    /// テーマ
+    theme: Theme,
 }
 
 impl<'a> SessionTable<'a> {
     /// 新規作成
-    pub fn new(sessions: &'a [SessionListItem]) -> Self {
+    pub fn new(sessions: &'a [SessionListItem], theme: Theme) -> Self {
+        let palette = theme.palette;
         Self {
             sessions,
             block: None,
             style: Style::default(),
             highlight_style: Style::default()
-                .bg(Color::Blue)
+                .bg(palette.selection_bg)
+                .fg(palette.selection_fg)
                 .add_modifier(Modifier::BOLD),
+            theme,
         }
     }
 
@@ -133,6 +139,7 @@ impl StatefulWidget for SessionTable<'_> {
 impl SessionTable<'_> {
     /// セッション行をレンダリング
     fn render_session_line(&self, session: &SessionListItem, width: usize) -> Line<'static> {
+        let palette = self.theme.palette;
         // 時刻（固定幅）
         let time_width = 16;
         let time = format!("{:width$}", session.formatted_time, width = time_width);
@@ -140,11 +147,15 @@ impl SessionTable<'_> {
         let (label_text, label_style) = match session.source {
             SessionSource::Claude => (
                 "[Claude]",
-                Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             SessionSource::Codex => (
                 "[Codex]",
-                Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(palette.success)
+                    .add_modifier(Modifier::BOLD),
             ),
         };
         let label_width = 8;
@@ -177,13 +188,13 @@ impl SessionTable<'_> {
         };
 
         Line::from(vec![
-            Span::raw(time),
-            Span::styled(separator, Style::default().fg(Color::DarkGray)),
+            Span::styled(time, Style::default().fg(palette.text_dim)),
+            Span::styled(separator, Style::default().fg(palette.text_dim)),
             Span::styled(label, label_style),
-            Span::styled(separator, Style::default().fg(Color::DarkGray)),
-            Span::raw(project),
-            Span::styled(separator, Style::default().fg(Color::DarkGray)),
-            Span::raw(display),
+            Span::styled(separator, Style::default().fg(palette.text_dim)),
+            Span::styled(project, Style::default().fg(palette.text)),
+            Span::styled(separator, Style::default().fg(palette.text_dim)),
+            Span::styled(display, Style::default().fg(palette.text)),
         ])
     }
 }

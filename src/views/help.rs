@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -24,6 +24,7 @@ const KEYBINDINGS: &[(&str, &str, &str)] = &[
     ("y", "Copy message", "Detail"),
     ("Y", "Copy message with meta", "Detail"),
     ("u", "Toggle currency", "List/Detail"),
+    ("Ctrl+t", "Toggle theme", "All"),
     // Export
     ("e", "Export session", "List/Detail"),
     // Other
@@ -33,8 +34,9 @@ const KEYBINDINGS: &[(&str, &str, &str)] = &[
 ];
 
 /// ヘルプ画面をレンダリング
-pub fn render_help(frame: &mut Frame, _model: &Model) {
+pub fn render_help(frame: &mut Frame, model: &Model) {
     let area = frame.area();
+    let palette = model.theme.palette;
 
     // 中央にポップアップとして表示
     let popup_width = 60.min(area.width.saturating_sub(4));
@@ -52,8 +54,8 @@ pub fn render_help(frame: &mut Frame, _model: &Model) {
     let block = Block::default()
         .title(" Help - Keybindings ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .style(Style::default().bg(Color::Black));
+        .border_style(Style::default().fg(palette.border))
+        .style(Style::default().bg(palette.surface));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -71,19 +73,19 @@ pub fn render_help(frame: &mut Frame, _model: &Model) {
         Span::styled(
             format!("{:<15}", "Key"),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(palette.accent_alt)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("{:<25}", "Action"),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(palette.accent_alt)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "Context",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(palette.accent_alt)
                 .add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -94,9 +96,15 @@ pub fn render_help(frame: &mut Frame, _model: &Model) {
         .iter()
         .map(|(key, action, context)| {
             Line::from(vec![
-                Span::styled(format!("{:<15}", key), Style::default().fg(Color::Cyan)),
-                Span::styled(format!("{:<25}", action), Style::default().fg(Color::White)),
-                Span::styled(*context, Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{:<15}", key),
+                    Style::default().fg(palette.accent),
+                ),
+                Span::styled(
+                    format!("{:<25}", action),
+                    Style::default().fg(palette.text),
+                ),
+                Span::styled(*context, Style::default().fg(palette.text_dim)),
             ])
         })
         .collect();
@@ -106,7 +114,7 @@ pub fn render_help(frame: &mut Frame, _model: &Model) {
     // フッター
     let footer = Line::from(vec![Span::styled(
         "Press Esc or ? to close",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(palette.text_dim),
     )]);
     frame.render_widget(Paragraph::new(footer), layout[2]);
 }

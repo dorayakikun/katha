@@ -1,13 +1,14 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Widget},
 };
 
 use crate::domain::Currency;
 use crate::tea::{Model, ViewMode};
+use crate::theme::Theme;
 
 /// ステータスバーウィジェット
 /// フィルタ状態、セッション数、現在のモードを表示する
@@ -20,6 +21,7 @@ pub struct StatusBar<'a> {
     project_filter: Option<&'a str>,
     error_message: Option<&'a str>,
     currency: Currency,
+    theme: Theme,
 }
 
 impl<'a> StatusBar<'a> {
@@ -42,6 +44,7 @@ impl<'a> StatusBar<'a> {
             project_filter,
             error_message: model.error_message.as_deref(),
             currency: model.currency,
+            theme: model.theme,
         }
     }
 
@@ -60,9 +63,14 @@ impl<'a> StatusBar<'a> {
 
 impl Widget for StatusBar<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let palette = self.theme.palette;
+        let base_style = Style::default().fg(palette.text).bg(palette.surface);
+        buf.set_style(area, base_style);
+
         let block = Block::default()
             .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(palette.border))
+            .style(Style::default().bg(palette.surface));
 
         let inner = block.inner(area);
         block.render(area, buf);
@@ -73,55 +81,80 @@ impl Widget for StatusBar<'_> {
 
         let mut spans: Vec<Span> = Vec::new();
 
+        let push_sep = |spans: &mut Vec<Span>| {
+            spans.push(Span::styled(" | ", Style::default().fg(palette.text_dim)));
+        };
+
         // モード表示
         spans.push(Span::styled(
             format!("[{}]", self.mode_text()),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.accent)
                 .add_modifier(Modifier::BOLD),
         ));
 
         spans.push(Span::raw(" "));
 
         // セッション数表示
-        let count_text = if self.is_filtered {
-            format!("Sessions: {}/{}", self.filtered_count, self.total_count)
+        spans.push(Span::styled(
+            "Sessions: ",
+            Style::default().fg(palette.text_muted),
+        ));
+        let count_value = if self.is_filtered {
+            format!("{}/{}", self.filtered_count, self.total_count)
         } else {
-            format!("Sessions: {}", self.total_count)
+            format!("{}", self.total_count)
         };
-        spans.push(Span::styled(count_text, Style::default().fg(Color::White)));
+        spans.push(Span::styled(
+            count_value,
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        ));
 
         // フィルタ状態表示
         if let Some(project) = self.project_filter {
-            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            push_sep(&mut spans);
             spans.push(Span::styled(
-                format!("Project: \"{}\"", project),
-                Style::default().fg(Color::Yellow),
+                "Project: ",
+                Style::default().fg(palette.text_muted),
+            ));
+            spans.push(Span::styled(
+                format!("\"{}\"", project),
+                Style::default().fg(palette.accent),
             ));
         }
 
         // 検索クエリ表示
         if let Some(query) = self.search_query {
-            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            push_sep(&mut spans);
             spans.push(Span::styled(
-                format!("Search: \"{}\"", query),
-                Style::default().fg(Color::Green),
+                "Search: ",
+                Style::default().fg(palette.text_muted),
+            ));
+            spans.push(Span::styled(
+                format!("\"{}\"", query),
+                Style::default().fg(palette.accent_alt),
             ));
         }
 
         if let Some(error) = self.error_message {
-            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            push_sep(&mut spans);
             spans.push(Span::styled(
-                format!("Error: {}", error),
-                Style::default().fg(Color::Red),
+                "Error: ",
+                Style::default().fg(palette.text_muted),
+            ));
+            spans.push(Span::styled(
+                error.to_string(),
+                Style::default().fg(palette.error),
             ));
         }
 
         if self.view_mode == ViewMode::SessionDetail {
-            spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            push_sep(&mut spans);
             spans.push(Span::styled(
                 format!("Currency: {}", self.currency.label()),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(palette.text_dim),
             ));
         }
 

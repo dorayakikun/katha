@@ -1,10 +1,12 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph, Widget},
 };
+
+use crate::theme::Theme;
 
 /// 検索バーウィジェット
 pub struct SearchBar<'a> {
@@ -14,15 +16,18 @@ pub struct SearchBar<'a> {
     cursor_visible: bool,
     /// ブロック
     block: Option<Block<'a>>,
+    /// テーマ
+    theme: Theme,
 }
 
 impl<'a> SearchBar<'a> {
     /// 新規作成
-    pub fn new(query: &'a str) -> Self {
+    pub fn new(query: &'a str, theme: Theme) -> Self {
         Self {
             query,
             cursor_visible: true,
             block: None,
+            theme,
         }
     }
 
@@ -41,24 +46,32 @@ impl<'a> SearchBar<'a> {
 
 impl Widget for SearchBar<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let palette = self.theme.palette;
+        buf.set_style(
+            area,
+            Style::default()
+                .bg(palette.input_bg)
+                .fg(palette.input_fg),
+        );
+
         // 検索プロンプト
         let prompt = Span::styled(
             " / ",
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
+                .fg(palette.badge_fg)
+                .bg(palette.badge_bg)
                 .add_modifier(Modifier::BOLD),
         );
 
         // 検索テキスト
-        let text = Span::styled(self.query, Style::default().fg(Color::White));
+        let text = Span::styled(self.query, Style::default().fg(palette.input_fg));
 
         // カーソル
         let cursor = if self.cursor_visible {
             Span::styled(
                 "_",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(palette.cursor)
                     .add_modifier(Modifier::SLOW_BLINK),
             )
         } else {
@@ -79,24 +92,25 @@ impl Widget for SearchBar<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::Theme;
 
     #[test]
     fn test_search_bar_new() {
-        let search_bar = SearchBar::new("test query");
+        let search_bar = SearchBar::new("test query", Theme::default());
         assert_eq!(search_bar.query, "test query");
         assert!(search_bar.cursor_visible);
     }
 
     #[test]
     fn test_search_bar_cursor_visible() {
-        let search_bar = SearchBar::new("test").cursor_visible(false);
+        let search_bar = SearchBar::new("test", Theme::default()).cursor_visible(false);
         assert!(!search_bar.cursor_visible);
     }
 
     #[test]
     fn test_search_bar_block() {
         let block = Block::default();
-        let search_bar = SearchBar::new("test").block(block);
+        let search_bar = SearchBar::new("test", Theme::default()).block(block);
         assert!(search_bar.block.is_some());
     }
 }

@@ -1,19 +1,24 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
 use crate::layout::TwoPane;
 use crate::tea::{Model, ViewMode};
+use crate::theme::Palette;
 use crate::views::render_preview_pane;
 use crate::widgets::{ProjectTree, ProjectTreeState, SearchBar, StatusBar};
 
 /// セッション一覧ビューをレンダリング
 pub fn render_session_list(frame: &mut Frame, model: &Model) {
     let area = frame.area();
+    let palette = model.theme.palette;
+
+    let base = Block::default().style(Style::default().bg(palette.bg));
+    frame.render_widget(base, area);
 
     // 検索モード時は検索バー用の行を追加
     let is_search_mode = model.view_mode == ViewMode::Search;
@@ -55,7 +60,7 @@ pub fn render_session_list(frame: &mut Frame, model: &Model) {
 
     // エラーメッセージがある場合は画面下部に表示
     if let Some(error) = &model.error_message {
-        render_error_message(frame, error);
+        render_error_message(frame, error, model.theme.palette);
     }
 }
 
@@ -70,43 +75,53 @@ fn render_main_content(frame: &mut Frame, area: Rect, model: &Model) {
 
 /// ヘッダーをレンダリング
 fn render_header(frame: &mut Frame, area: Rect, model: &Model) {
+    let palette = model.theme.palette;
     let mut spans = vec![
         Span::styled(
             " katha ",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "- Claude Code Conversation Viewer",
-            Style::default().fg(Color::Gray),
+            Style::default().fg(palette.text_dim),
         ),
     ];
 
     // フィルタ/検索が適用されている場合は件数を表示
     if model.is_filtered || !model.search_query.is_empty() {
         let count_text = format!("  ({}/{})", model.filtered_count(), model.sessions.len());
-        spans.push(Span::styled(count_text, Style::default().fg(Color::Yellow)));
+        spans.push(Span::styled(
+            count_text,
+            Style::default()
+                .fg(palette.accent_alt)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
 
     let title = Line::from(spans);
 
     let block = Block::default()
         .borders(Borders::BOTTOM)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(palette.border))
+        .style(Style::default().bg(palette.surface));
 
-    let header = Paragraph::new(title).block(block);
+    let header = Paragraph::new(title)
+        .block(block)
+        .style(Style::default().fg(palette.text).bg(palette.surface));
     frame.render_widget(header, area);
 }
 
 /// 検索バーをレンダリング
 fn render_search_bar(frame: &mut Frame, area: Rect, model: &Model) {
-    let search_bar = SearchBar::new(&model.search_query.text).cursor_visible(true);
+    let search_bar = SearchBar::new(&model.search_query.text, model.theme).cursor_visible(true);
     frame.render_widget(search_bar, area);
 }
 
 /// セッション一覧をレンダリング
 fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
+    let palette = model.theme.palette;
     let project_count = model.project_groups.len();
     let session_count = model.total_session_count();
 
@@ -124,7 +139,8 @@ fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(palette.border))
+        .style(Style::default().bg(palette.bg));
 
     if model.tree_items.is_empty() {
         let message = if model.project_groups.is_empty() {
@@ -133,14 +149,15 @@ fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
             "No matching sessions"
         };
         let empty_message = Paragraph::new(message)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(palette.text_dim))
             .block(block);
         frame.render_widget(empty_message, area);
         return;
     }
 
     // ProjectTree ウィジェットを使用
-    let tree = ProjectTree::new(&model.tree_items, &model.expanded_projects).block(block);
+    let tree = ProjectTree::new(&model.tree_items, &model.expanded_projects, model.theme)
+        .block(block);
 
     let mut state = ProjectTreeState::new();
     state.select(model.selected_index);
@@ -150,6 +167,7 @@ fn render_sessions(frame: &mut Frame, area: Rect, model: &Model) {
 
 /// フッターをレンダリング（ステータスバー + キーバインド）
 fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
+    let palette = model.theme.palette;
     // ステータスバーを描画
     let status_bar = StatusBar::new(model);
     frame.render_widget(status_bar, area);
@@ -162,6 +180,9 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
             width: area.width,
             height: area.height.saturating_sub(1),
         };
+
+        let keybind_bg = Block::default().style(Style::default().bg(palette.surface));
+        frame.render_widget(keybind_bg, keybind_area);
 
         let keys: Vec<(&str, &str)> = match model.view_mode {
             ViewMode::Search => vec![("Enter", "Confirm"), ("Esc", "Cancel")],
@@ -178,6 +199,7 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
                     ("l/h", "Expand/Fold"),
                     ("/", "Search"),
                     ("f", "Filter"),
+                    ("Ctrl+t", "Theme"),
                     ("e", "Export"),
                     ("?", "Help"),
                 ];
@@ -196,17 +218,21 @@ fn render_footer(frame: &mut Frame, area: Rect, model: &Model) {
                     Span::styled(
                         format!(" {} ", key),
                         Style::default()
-                            .fg(Color::Black)
-                            .bg(Color::Cyan)
+                            .fg(palette.badge_fg)
+                            .bg(palette.badge_bg)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(format!(" {} ", action), Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        format!(" {} ", action),
+                        Style::default().fg(palette.text_dim),
+                    ),
                     Span::raw(" "),
                 ]
             })
             .collect();
 
-        let keybinds = Paragraph::new(Line::from(spans));
+        let keybinds = Paragraph::new(Line::from(spans))
+            .style(Style::default().fg(palette.text).bg(palette.surface));
         frame.render_widget(keybinds, keybind_area);
     }
 }
@@ -216,6 +242,7 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
     use crate::search::FilterField;
 
     let area = frame.area();
+    let palette = model.theme.palette;
 
     // 中央にパネルを配置
     let panel_width = 50.min(area.width.saturating_sub(4));
@@ -227,14 +254,15 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
     let panel_area = Rect::new(panel_x, panel_y, panel_width, panel_height);
 
     // 背景をクリア
-    let clear_block = Block::default().style(Style::default().bg(Color::Black));
+    let clear_block = Block::default().style(Style::default().bg(palette.surface));
     frame.render_widget(clear_block, panel_area);
 
     // パネルブロック
     let block = Block::default()
         .title(" Filter ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(palette.border))
+        .style(Style::default().bg(palette.surface));
 
     let inner = block.inner(panel_area);
     frame.render_widget(block, panel_area);
@@ -252,10 +280,10 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
     // Date Range ラベル
     let date_style = if model.filter_field == FilterField::DateRange {
         Style::default()
-            .fg(Color::Yellow)
+            .fg(palette.accent_alt)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(palette.text)
     };
     let date_label = Paragraph::new("Date Range:").style(date_style);
     frame.render_widget(date_label, lines_layout[0]);
@@ -273,9 +301,9 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
             };
             let style =
                 if i == model.date_preset_index && model.filter_field == FilterField::DateRange {
-                    Style::default().fg(Color::Yellow)
+                    Style::default().fg(palette.accent_alt)
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(palette.text_dim)
                 };
             Line::from(Span::styled(format!("  {}{}", marker, preset), style))
         })
@@ -286,10 +314,10 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
     // Project ラベル
     let project_style = if model.filter_field == FilterField::Project {
         Style::default()
-            .fg(Color::Yellow)
+            .fg(palette.accent_alt)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(palette.text)
     };
     let project_label = Paragraph::new("Project:").style(project_style);
     frame.render_widget(project_label, lines_layout[2]);
@@ -301,17 +329,17 @@ fn render_filter_panel(frame: &mut Frame, model: &Model) {
         ""
     };
     let project_input = Paragraph::new(format!("  {}{}", model.filter_project_input, cursor))
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().fg(palette.input_fg));
     frame.render_widget(project_input, lines_layout[3]);
 
     // ヘルプ
     let help = Paragraph::new("Tab: Switch | j/k: Select | Enter: Apply | Esc: Cancel")
-        .style(Style::default().fg(Color::DarkGray));
+        .style(Style::default().fg(palette.text_dim));
     frame.render_widget(help, lines_layout[4]);
 }
 
 /// エラーメッセージをレンダリング（画面下部にオーバーレイ）
-fn render_error_message(frame: &mut Frame, error: &str) {
+fn render_error_message(frame: &mut Frame, error: &str, palette: Palette) {
     let area = frame.area();
 
     // 画面下部にエラーメッセージを表示（フッターの上）
@@ -321,17 +349,18 @@ fn render_error_message(frame: &mut Frame, error: &str) {
     let error_area = Rect::new(area.x + 1, error_y, area.width.saturating_sub(2), error_height);
 
     // 背景をクリア
-    let clear_block = Block::default().style(Style::default().bg(Color::Black));
+    let clear_block = Block::default().style(Style::default().bg(palette.surface));
     frame.render_widget(clear_block, error_area);
 
     // エラーメッセージブロック
     let block = Block::default()
         .title(" Error ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Red));
+        .border_style(Style::default().fg(palette.error))
+        .style(Style::default().bg(palette.surface));
 
     let error_text = Paragraph::new(error)
-        .style(Style::default().fg(Color::Red))
+        .style(Style::default().fg(palette.error))
         .block(block);
 
     frame.render_widget(error_text, error_area);

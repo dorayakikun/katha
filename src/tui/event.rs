@@ -77,6 +77,9 @@ impl EventHandler {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Message::Quit;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('t') {
+            return Message::ToggleTheme;
+        }
 
         match view_mode {
             ViewMode::SessionList => self.session_list_key(key),

@@ -1,46 +1,55 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Widget,
 };
 
 use crate::domain::SessionEntry;
 use crate::domain::billing::{Currency, estimate_cost_usd, format_tokens};
+use crate::theme::Theme;
 use unicode_width::UnicodeWidthStr;
 
 /// メッセージブロックのスタイル定義
-pub struct MessageStyles;
+pub struct MessageStyles {
+    palette: crate::theme::Palette,
+}
 
 impl MessageStyles {
+    pub fn new(theme: Theme) -> Self {
+        Self {
+            palette: theme.palette,
+        }
+    }
+
     /// ユーザーロールのスタイル
-    pub fn user_role() -> Style {
+    pub fn user_role(&self) -> Style {
         Style::default()
-            .fg(Color::Cyan)
+            .fg(self.palette.accent)
             .add_modifier(Modifier::BOLD)
     }
 
     /// アシスタントロールのスタイル
-    pub fn assistant_role() -> Style {
+    pub fn assistant_role(&self) -> Style {
         Style::default()
-            .fg(Color::Green)
+            .fg(self.palette.success)
             .add_modifier(Modifier::BOLD)
     }
 
     /// セパレータのスタイル
-    pub fn separator() -> Style {
-        Style::default().fg(Color::DarkGray)
+    pub fn separator(&self) -> Style {
+        Style::default().fg(self.palette.text_dim)
     }
 
     /// タイムスタンプのスタイル
-    pub fn timestamp() -> Style {
-        Style::default().fg(Color::DarkGray)
+    pub fn timestamp(&self) -> Style {
+        Style::default().fg(self.palette.text_dim)
     }
 
     /// ツール呼び出しのスタイル
-    pub fn tool_use() -> Style {
-        Style::default().fg(Color::Yellow)
+    pub fn tool_use(&self) -> Style {
+        Style::default().fg(self.palette.accent_alt)
     }
 }
 
@@ -49,21 +58,24 @@ pub struct MessageBlock<'a> {
     entry: &'a SessionEntry,
     width: u16,
     currency: Currency,
+    theme: Theme,
 }
 
 impl<'a> MessageBlock<'a> {
     /// 新規作成
-    pub fn new(entry: &'a SessionEntry, width: u16, currency: Currency) -> Self {
+    pub fn new(entry: &'a SessionEntry, width: u16, currency: Currency, theme: Theme) -> Self {
         Self {
             entry,
             width,
             currency,
+            theme,
         }
     }
 
     /// メッセージをレンダリング用の行に変換
     pub fn to_lines(&self) -> Vec<Line<'a>> {
         let mut lines = Vec::new();
+        let palette = self.theme.palette;
 
         // ロールヘッダー
         lines.push(self.render_header());
@@ -71,7 +83,10 @@ impl<'a> MessageBlock<'a> {
         // メッセージ本文
         if let Some(text) = self.entry.display_text() {
             for line in text.lines() {
-                lines.push(Line::from(Span::raw(line.to_string())));
+                lines.push(Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(palette.text),
+                )));
             }
         }
 
@@ -88,10 +103,12 @@ impl<'a> MessageBlock<'a> {
 
     /// ヘッダー行をレンダリング
     fn render_header(&self) -> Line<'a> {
+        let styles = MessageStyles::new(self.theme);
+        let palette = self.theme.palette;
         let (role_label, role_style) = if self.entry.is_user() {
-            ("user", MessageStyles::user_role())
+            ("user", styles.user_role())
         } else {
-            ("assistant", MessageStyles::assistant_role())
+            ("assistant", styles.assistant_role())
         };
 
         let timestamp = self
@@ -100,26 +117,50 @@ impl<'a> MessageBlock<'a> {
             .map(|dt| dt.format(" %H:%M:%S").to_string())
             .unwrap_or_default();
 
-        let usage_text = self.usage_text();
-        let meta = if let Some(usage_text) = usage_text {
-            format!("{timestamp} {usage_text}")
+        let usage_meta = self.usage_meta();
+        let meta_plain = if let Some(usage) = &usage_meta {
+            format!("{timestamp} {} | {}", usage.tokens_text, usage.cost_text)
         } else {
-            timestamp
+            timestamp.clone()
         };
 
-        let meta_width = UnicodeWidthStr::width(meta.as_str()) as u16;
+        let meta_width = UnicodeWidthStr::width(meta_plain.as_str()) as u16;
         let separator_len = self
             .width
             .saturating_sub(role_label.len() as u16 + 4 + meta_width);
 
-        Line::from(vec![
-            Span::styled(format!("── {} ", role_label), role_style),
-            Span::styled(
-                "─".repeat(separator_len as usize),
-                MessageStyles::separator(),
-            ),
-            Span::styled(meta, MessageStyles::timestamp()),
-        ])
+        let mut meta_spans: Vec<Span> = Vec::new();
+        meta_spans.push(Span::styled(timestamp, styles.timestamp()));
+        if let Some(usage) = usage_meta {
+            meta_spans.push(Span::raw(" "));
+            meta_spans.push(Span::styled(
+                usage.tokens_text,
+                Style::default()
+                    .fg(palette.accent_alt)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            meta_spans.push(Span::styled(
+                " | ",
+                Style::default().fg(palette.text_dim),
+            ));
+            let cost_style = if usage.cost_is_na {
+                Style::default().fg(palette.text_dim)
+            } else {
+                Style::default()
+                    .fg(palette.warning)
+                    .add_modifier(Modifier::BOLD)
+            };
+            meta_spans.push(Span::styled(usage.cost_text, cost_style));
+        }
+
+        let mut spans = Vec::new();
+        spans.push(Span::styled(format!("── {} ", role_label), role_style));
+        spans.push(Span::styled(
+            "─".repeat(separator_len as usize),
+            styles.separator(),
+        ));
+        spans.extend(meta_spans);
+        Line::from(spans)
     }
 
     /// ツール呼び出し情報をレンダリング
@@ -133,18 +174,19 @@ impl<'a> MessageBlock<'a> {
 
         let mut lines = Vec::new();
         lines.push(Line::from(""));
+        let styles = MessageStyles::new(self.theme);
 
         for (_id, name, _input) in tool_uses {
             lines.push(Line::from(vec![
-                Span::styled("  ⚙ ", MessageStyles::tool_use()),
-                Span::styled(name.to_string(), MessageStyles::tool_use()),
+                Span::styled("  ⚙ ", styles.tool_use()),
+                Span::styled(name.to_string(), styles.tool_use()),
             ]));
         }
 
         Some(lines)
     }
 
-    fn usage_text(&self) -> Option<String> {
+    fn usage_meta(&self) -> Option<UsageMeta> {
         let message = self.entry.message.as_ref()?;
         let usage = message.usage.as_ref()?;
         if usage.input_tokens.is_none() || usage.output_tokens.is_none() {
@@ -159,9 +201,20 @@ impl<'a> MessageBlock<'a> {
             .and_then(|model| estimate_cost_usd(model, usage))
             .map(|usd| self.currency.format_cost(usd))
             .unwrap_or_else(|| "n/a".to_string());
+        let cost_is_na = cost_text == "n/a";
 
-        Some(format!("{tokens_text} | {cost_text}"))
+        Some(UsageMeta {
+            tokens_text,
+            cost_text,
+            cost_is_na,
+        })
     }
+}
+
+struct UsageMeta {
+    tokens_text: String,
+    cost_text: String,
+    cost_is_na: bool,
 }
 
 impl Widget for MessageBlock<'_> {
@@ -182,6 +235,7 @@ impl Widget for MessageBlock<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::Theme;
 
     fn create_test_entry(entry_type: &str) -> SessionEntry {
         SessionEntry {
@@ -193,17 +247,19 @@ mod tests {
 
     #[test]
     fn test_message_styles() {
-        let user = MessageStyles::user_role();
-        assert_eq!(user.fg, Some(Color::Cyan));
+        let theme = Theme::default();
+        let styles = MessageStyles::new(theme);
+        let user = styles.user_role();
+        assert_eq!(user.fg, Some(theme.palette.accent));
 
-        let assistant = MessageStyles::assistant_role();
-        assert_eq!(assistant.fg, Some(Color::Green));
+        let assistant = styles.assistant_role();
+        assert_eq!(assistant.fg, Some(theme.palette.success));
     }
 
     #[test]
     fn test_message_block_user() {
         let entry = create_test_entry("user");
-        let block = MessageBlock::new(&entry, 80, Currency::Usd);
+        let block = MessageBlock::new(&entry, 80, Currency::Usd, Theme::default());
         let lines = block.to_lines();
 
         assert!(!lines.is_empty());
@@ -212,7 +268,7 @@ mod tests {
     #[test]
     fn test_message_block_assistant() {
         let entry = create_test_entry("assistant");
-        let block = MessageBlock::new(&entry, 80, Currency::Usd);
+        let block = MessageBlock::new(&entry, 80, Currency::Usd, Theme::default());
         let lines = block.to_lines();
 
         assert!(!lines.is_empty());

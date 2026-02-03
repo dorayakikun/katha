@@ -3,12 +3,13 @@ use std::collections::HashSet;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, StatefulWidget, Widget},
 };
 
 use crate::tea::{SessionSource, TreeItem, TreeNodeKind};
+use crate::theme::Theme;
 
 /// 文字列を指定した文字数で安全に切り詰める（UTF-8 対応）
 fn truncate_str(s: &str, max_chars: usize) -> String {
@@ -56,19 +57,24 @@ pub struct ProjectTree<'a> {
     style: Style,
     /// 選択行のスタイル
     highlight_style: Style,
+    /// テーマ
+    theme: Theme,
 }
 
 impl<'a> ProjectTree<'a> {
     /// 新規作成
-    pub fn new(items: &'a [TreeItem], expanded: &'a HashSet<String>) -> Self {
+    pub fn new(items: &'a [TreeItem], expanded: &'a HashSet<String>, theme: Theme) -> Self {
+        let palette = theme.palette;
         Self {
             items,
             expanded,
             block: None,
             style: Style::default(),
             highlight_style: Style::default()
-                .bg(Color::Blue)
+                .bg(palette.selection_bg)
+                .fg(palette.selection_fg)
                 .add_modifier(Modifier::BOLD),
+            theme,
         }
     }
 
@@ -159,6 +165,7 @@ impl ProjectTree<'_> {
 
     /// プロジェクト行をレンダリング
     fn render_project_line(&self, item: &TreeItem, width: usize) -> Line<'static> {
+        let palette = self.theme.palette;
         let is_expanded = self.expanded.contains(&item.project_path);
         let arrow = if is_expanded { "▼ " } else { "▶ " };
 
@@ -176,15 +183,21 @@ impl ProjectTree<'_> {
         let project_name = truncate_str(&item.project_name, name_width);
 
         Line::from(vec![
-            Span::styled(arrow, Style::default().fg(Color::Yellow)),
-            Span::styled(project_name, Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(count_str, Style::default().fg(Color::DarkGray)),
-            Span::styled(time_str, Style::default().fg(Color::DarkGray)),
+            Span::styled(arrow, Style::default().fg(palette.accent)),
+            Span::styled(
+                project_name,
+                Style::default()
+                    .fg(palette.text)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(count_str, Style::default().fg(palette.text_dim)),
+            Span::styled(time_str, Style::default().fg(palette.text_dim)),
         ])
     }
 
     /// セッション行をレンダリング
     fn render_session_line(&self, item: &TreeItem, width: usize) -> Line<'static> {
+        let palette = self.theme.palette;
         let indent = "    ";
         let separator = " │ ";
         let label_separator = " ";
@@ -205,14 +218,18 @@ impl ProjectTree<'_> {
             .map(|s| match s.source {
                 SessionSource::Claude => (
                     "[Claude]",
-                    Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(palette.accent)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 SessionSource::Codex => (
                     "[Codex]",
-                    Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(palette.success)
+                        .add_modifier(Modifier::BOLD),
                 ),
             })
-            .unwrap_or(("[Unknown]", Style::default().fg(Color::DarkGray)));
+            .unwrap_or(("[Unknown]", Style::default().fg(palette.text_dim)));
         let label_width = 8;
         let label = format!("{:width$}", label_text, width = label_width);
 
@@ -228,12 +245,12 @@ impl ProjectTree<'_> {
         let display_text = truncate_str(display, display_width);
 
         Line::from(vec![
-            Span::styled(indent, Style::default().fg(Color::DarkGray)),
-            Span::raw(time_str.to_string()),
-            Span::styled(label_separator, Style::default().fg(Color::DarkGray)),
+            Span::styled(indent, Style::default().fg(palette.text_dim)),
+            Span::styled(time_str.to_string(), Style::default().fg(palette.text_dim)),
+            Span::styled(label_separator, Style::default().fg(palette.text_dim)),
             Span::styled(label, label_style),
-            Span::styled(separator, Style::default().fg(Color::DarkGray)),
-            Span::raw(display_text),
+            Span::styled(separator, Style::default().fg(palette.text_dim)),
+            Span::styled(display_text, Style::default().fg(palette.text)),
         ])
     }
 }

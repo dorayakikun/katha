@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -27,6 +27,7 @@ fn spinner_frame() -> char {
 /// エクスポートダイアログをレンダリング
 pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
     let area = frame.area();
+    let palette = model.theme.palette;
 
     // 中央にポップアップとして表示
     let popup_width = 50.min(area.width.saturating_sub(4));
@@ -44,8 +45,8 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
     let block = Block::default()
         .title(" Export Session ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .style(Style::default().bg(Color::Black));
+        .border_style(Style::default().fg(palette.border))
+        .style(Style::default().bg(palette.surface));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -65,23 +66,23 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
     .split(inner);
 
     // Format ラベル
-    let format_label = Paragraph::new("Format:").style(Style::default().fg(Color::White));
+    let format_label = Paragraph::new("Format:").style(Style::default().fg(palette.text));
     frame.render_widget(format_label, layout[1]);
 
     // Format 選択
     let md_style = if model.export_format == ExportFormat::Markdown {
         Style::default()
-            .fg(Color::Yellow)
+            .fg(palette.accent_alt)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::Gray)
+        Style::default().fg(palette.text_dim)
     };
     let json_style = if model.export_format == ExportFormat::Json {
         Style::default()
-            .fg(Color::Yellow)
+            .fg(palette.accent_alt)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::Gray)
+        Style::default().fg(palette.text_dim)
     };
 
     let md_marker = if model.export_format == ExportFormat::Markdown {
@@ -102,7 +103,7 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
     frame.render_widget(Paragraph::new(format_line), layout[2]);
 
     // Output ラベル
-    let output_label = Paragraph::new("Output:").style(Style::default().fg(Color::White));
+    let output_label = Paragraph::new("Output:").style(Style::default().fg(palette.text));
     frame.render_widget(output_label, layout[4]);
 
     // Output パス
@@ -120,7 +121,7 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
     };
 
     let output_path =
-        Paragraph::new(format!("  ./{}", filename)).style(Style::default().fg(Color::DarkGray));
+        Paragraph::new(format!("  ./{}", filename)).style(Style::default().fg(palette.text_dim));
     frame.render_widget(output_path, layout[5]);
 
     // ステータス表示
@@ -131,7 +132,7 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
                 let spinner = spinner_frame();
                 Line::from(Span::styled(
                     format!("  {} Exporting...", spinner),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(palette.warning),
                 ))
             }
             ExportStatus::Success(path) => {
@@ -150,12 +151,12 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
                 };
                 Line::from(Span::styled(
                     format!("  ✓ Saved: {}", display_path),
-                    Style::default().fg(Color::Green),
+                    Style::default().fg(palette.success),
                 ))
             }
             ExportStatus::Error(err) => Line::from(Span::styled(
                 format!("  ✗ Error: {}", err),
-                Style::default().fg(Color::Red),
+                Style::default().fg(palette.error),
             )),
         };
         frame.render_widget(Paragraph::new(status_line), layout[7]);
@@ -166,6 +167,6 @@ pub fn render_export_dialog(frame: &mut Frame, model: &Model) {
         Some(ExportStatus::Success(_)) | Some(ExportStatus::Error(_)) => "Press Esc to close",
         _ => "Enter: Export | Tab/j/k: Switch | Esc: Cancel",
     };
-    let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
+    let footer = Paragraph::new(footer_text).style(Style::default().fg(palette.text_dim));
     frame.render_widget(footer, layout[8]);
 }

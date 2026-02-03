@@ -33,6 +33,14 @@ cargo install --path .
 katha
 ```
 
+### Theme
+
+Set `KATHA_THEME` to switch color themes (default is `dark`).
+
+```bash
+KATHA_THEME=light katha
+```
+
 ## Key Bindings
 
 ### Navigation
@@ -62,6 +70,11 @@ katha
 | `e` | Export dialog |
 | `?` | Help |
 
+### Other
+| Key | Action |
+|-----|--------|
+| `Ctrl+t` | Toggle theme |
+
 ### Detail Actions
 | Key | Action |
 |-----|--------|
@@ -71,5 +84,6 @@ katha
 ## Requirements
 
 - Rust 1.70+
+- 24-bit TrueColor compatible terminal (for full theme fidelity)
 - Claude Code history data (`~/.claude/`)
 - Codex history data (`~/.codex/`) (optional)
